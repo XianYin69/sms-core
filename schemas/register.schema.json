@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "skill_register",
+  "type": "object",
+  "required": ["schema", "version", "skills"],
+  "properties": {
+    "schema": { "const": "skill_register" },
+    "version": { "type": "string" },
+    "generated_at": { "type": "string" },
+    "scan_roots": { "type": "array", "items": { "type": "string" } },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "install_path", "entry"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "install_path": { "type": "string" },
+          "entry": { "type": "string" },
+          "kind": { "enum": ["skill", "sub_skill"] },
+          "tools": { "type": "array", "items": { "type": "string" } },
+          "description": { "type": "string" },
+          "status": { "enum": ["active", "disabled", "deprecated"] },
+          "updated_at": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "skill_process",
+  "type": "object",
+  "required": ["schema", "version", "procs"],
+  "properties": {
+    "schema": { "const": "skill_process" },
+    "version": { "type": "string" },
+    "procs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["pid", "skill_id", "state"],
+        "properties": {
+          "pid": { "type": "string" },
+          "skill_id": { "type": "string" },
+          "state": { "enum": ["spawn", "run", "suspend", "resume", "kill"] },
+          "slots": { "type": "array", "items": { "type": "string" } },
+          "granted": { "type": "array", "items": { "type": "string" } },
+          "spawned_at": { "type": "string" }
+        }
+      }
+    }
+  }
+}

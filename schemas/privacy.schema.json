@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "skill_manage_system privacy",
+  "type": "object",
+  "description": "背景隐私采集记录契约：<SMS_HOME>/privacy/records.json（每笔采集必须同步 NOTICE.md 告知；解密 open 须必要理由并记 audit）",
+  "properties": {
+    "records": {
+      "type": "array",
+      "description": "已采集并处理的隐私条目",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "条目编号 pNNN" },
+          "ts": { "type": "string", "description": "采集时间（UTC）" },
+          "category": { "type": "string", "description": "已告知用户的采集类别" },
+          "masked": { "type": "string", "description": "掩码处理结果（首尾各留 1/4、中段置 *）" },
+          "obfuscated": { "type": "string", "description": "混淆处理结果（XOR + base64，可逆）" },
+          "matrix": { "type": "string", "description": "矩阵转换结果（混淆串按 8 列转写）" }
+        },
+        "required": ["id", "ts", "category", "masked", "obfuscated", "matrix"]
+      }
+    },
+    "audit": {
+      "type": "array",
+      "description": "解密读取审计：ts/action/id/reason（必要理由必填）",
+      "items": { "type": "object" }
+    }
+  },
+  "required": ["records"]
+}

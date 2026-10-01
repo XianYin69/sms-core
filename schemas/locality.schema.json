@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "skill_locality",
+  "type": "object",
+  "required": ["schema", "version", "timezone", "region"],
+  "properties": {
+    "schema": { "const": "skill_locality" },
+    "version": { "type": "string" },
+    "generated_at": { "type": "string" },
+    "timezone": {
+      "type": "object",
+      "properties": {
+        "name": { "type": ["string", "null"] },
+        "offset": { "type": "string" },
+        "utc_seconds": { "type": "integer" }
+      }
+    },
+    "region": {
+      "type": "object",
+      "properties": {
+        "locale": { "type": ["string", "null"] },
+        "country": { "type": ["string", "null"] },
+        "date": { "type": "string" },
+        "clock": { "type": "string" }
+      }
+    }
+  }
+}

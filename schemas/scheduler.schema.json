@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "skill_scheduler",
+  "type": "object",
+  "required": ["schema", "version", "lanes"],
+  "properties": {
+    "schema": { "const": "skill_scheduler" },
+    "version": { "type": "string" },
+    "generated_at": { "type": "string" },
+    "slots": { "type": "integer" },
+    "lanes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "lane": { "type": "string" },
+          "out": { "type": "string" },
+          "subtasks": { "type": "array", "items": { "type": "object" } },
+          "merged": { "type": "string" }
+        }
+      }
+    }
+  }
+}

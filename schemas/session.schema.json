@@ -1,0 +1,15 @@
+{
+ "$schema": "http://json-schema.org/draft-07/schema#",
+ "title": "skill_manage_system session folder",
+ "type": "object",
+ "description": "SMS/sessions/<YYYY-MM-DD>/ 五元组契约（debate.json 正反双辩论链、context_archive.md 自动压缩归档；十一链碎片全局存 <SMS_HOME>/chains/，见 chains.schema.json）",
+ "properties": {
+  "dialogue.md": { "type": "string", "description": "对话：用户与 agent 的完整记录" },
+  "user_chain.json": { "type": "object", "properties": { "date": { "type": "string" }, "intent": { "type": "string" }, "user": { "type": ["string", "null"] }, "context": { "type": "array", "items": { "type": "string" } } } },
+  "logic_chain.json": { "type": "object", "properties": { "nodes": { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "string" }, "type": { "type": "string" }, "label": { "type": "string" } } } }, "edges": { "type": "array", "items": { "type": "object", "properties": { "from": { "type": "string" }, "to": { "type": "string" } } } } } },
+  "skills.json": { "type": "object", "properties": { "used": { "type": "array", "items": { "type": "string" } } } },
+  "permissions.json": { "type": "object", "properties": { "date": { "type": "string" }, "grants": { "type": "object", "properties": { "read": { "type": "boolean" }, "write": { "type": "boolean" }, "execute": { "type": "boolean" }, "network": { "type": "boolean" } } }, "audit": { "type": "array", "items": { "type": "object", "properties": { "ts": { "type": "string" }, "action": { "type": "string" }, "key": { "type": "string" } } } } } },
+  "context_archive.md": { "type": "string", "description": "auto_compress 折叠的原文归档（可选，sha1 可回溯）" },
+  "debate.json": { "type": "object", "description": "正反双辩论逻辑链（可选，见 schemas/debate.schema.json）" }
+ }
+}

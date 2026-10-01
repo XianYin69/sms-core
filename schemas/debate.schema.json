@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "skill_debate",
+  "type": "object",
+  "required": ["schema", "version", "claim", "pro", "con", "verdict"],
+  "properties": {
+    "schema": { "const": "skill_debate" },
+    "version": { "type": "string" },
+    "generated_at": { "type": "string" },
+    "claim": { "type": "string" },
+    "pro": { "$ref": "#/definitions/chain" },
+    "con": { "$ref": "#/definitions/chain" },
+    "verdict": { "enum": ["pro", "con", "tie"] },
+    "rounds": { "type": "integer", "minimum": 0 }
+  },
+  "definitions": {
+    "chain": {
+      "type": "object",
+      "required": ["nodes", "edges"],
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "type": { "type": "string" },
+              "label": { "type": "string" }
+            }
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "from": { "type": "string" },
+              "to": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

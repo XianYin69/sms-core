@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "skill_executor",
+  "type": "object",
+  "required": ["schema", "version", "dispatches"],
+  "properties": {
+    "schema": { "const": "skill_executor" },
+    "version": { "type": "string" },
+    "generated_at": { "type": "string" },
+    "intent": { "type": "string" },
+    "dispatches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["subtask_id", "goal"],
+        "properties": {
+          "subtask_id": { "type": "string" },
+          "goal": { "type": "string" },
+          "skill_id": { "type": ["string", "null"] },
+          "tools": { "type": "array", "items": { "type": "string" } },
+          "requires": {
+            "type": "array",
+            "items": { "enum": ["read", "write", "execute", "network"] }
+          },
+          "needs_new": { "type": "boolean" },
+          "result": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

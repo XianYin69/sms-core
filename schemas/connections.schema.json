@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "skill_connector",
+  "type": "object",
+  "required": ["schema", "version", "chains"],
+  "properties": {
+    "schema": { "const": "skill_connector" },
+    "version": { "type": "string" },
+    "generated_at": { "type": "string" },
+    "chains": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "from", "to", "context"],
+        "properties": {
+          "id": { "type": "string" },
+          "from": { "type": "string" },
+          "to": { "type": "string" },
+          "context": { "type": "array", "items": { "type": "string" } },
+          "handoff": { "type": "string" }
+        }
+      }
+    }
+  }
+}

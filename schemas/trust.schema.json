@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "skill_manage_system trust chain",
+  "type": "object",
+  "description": "SMS/trust.json 信任链契约：每个 skill 一条目；云端必 review，本地随机 audit",
+  "additionalProperties": {
+    "type": "object",
+    "required": ["label"],
+    "properties": {
+      "label": { "type": "string", "enum": ["pending_review", "trusted_local", "trusted_cloud", "quarantine", "unlabeled"] },
+      "source": { "type": "string", "enum": ["local", "cloud", "review", "audit", "cli"] },
+      "updated": { "type": "string" },
+      "chain": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "ts": { "type": "string" },
+            "action": { "type": "string" },
+            "by": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

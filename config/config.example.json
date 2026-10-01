@@ -1,0 +1,25 @@
+{
+  "sms_home": null,
+  "comment": "SMS 用户配置模板（模型输入参数与运行设置）：真实配置固定存 <SMS_HOME>/config/config.json（首读由 resolve_home.conf() 从本模板播种，skill 本体目录不放真实配置）。「技能列表配置」（scan_roots/skill_generator 等）已分离存 <SMS_HOME>/config/skills.json，由 skills_config.py 管理（首访自动自本配置幂等搬出）。SMS 固定路径：默认由 resolve_home.py 解析（env SMS_HOME > 用户配置 sms_home > 缓存目录 > 根目录，统一建 SMS/）。若需覆盖，在用户配置里填绝对路径或设置环境变量 SMS_HOME。",
+  "agent_cli": {
+    "_comment": "sms-shell 数据流适配器：内置检测 claude/codex/cursor/kilocode/kilo/aider；在此增改 {名称:{bin,args,prompt_stdin,env}}——args 后自动追加话语参数（prompt_stdin=true 改为经标准输入送话语），env 为子进程注入环境变量（如 OPENAI_API_KEY）；默认前置 skill_manage_system 指令，可在 shell 里 :skill off 关闭"
+  },
+  "llm_gateway": {
+    "enabled": false,
+    "base_url": "http://127.0.0.1:31415/v1",
+    "api_key": "",
+    "model": "auto",
+    "max_tokens": 1024,
+    "timeout": 120,
+    "temperature": null,
+    "top_p": null,
+    "comment": "SMS 原生对话引擎（scripts/gateway.py，OpenAI 兼容 /chat/completions·/models，含 tools 工具循环与 base64 视觉附图）：enabled=true 时 sms-shell 默认走网关、无需 agent CLI；密钥建议用 api_key_env 指向环境变量；temperature/top_p＝模型参数（null 用上游默认）；shell :use <cli> 可切回 CLI 适配器；全量配置经 :config 或 web_shell 页面"
+  },
+  "model_meta": { "auto_refresh": true, "refresh_interval_min": 720, "comment": "上游模型 Token/上下文/RPM 自动抓取（model_meta.py）→ <SMS_HOME>/config/models.json；defaults 兜底见 config/settings.default.json" },
+  "chains": { "default": { "enabled": true, "merge_thr": 0.92, "prune_days": 14, "min_freq": 1 }, "comment": "各链设置 chains.<链>.<键> 覆盖 default；enabled=false 停写该链；knowledge 钉选不修剪" },
+  "dream": { "enabled": true, "interval_min": 360, "comment": "做梦开关·间隔（分钟），旧键 dream_interval_min 兼容" },
+  "web_shell": { "enabled": true, "host": "127.0.0.1", "port": 8737, "comment": "本地加密网页壳（web_shell.py）：HTTPS 自签指纹证书＋配对 token；:web start|stop|token" },
+  "external": { "enabled": false, "interface": "0.0.0.0", "port": 8738, "pq_mode": "auto", "session_ttl_min": 240, "max_fail_per_min": 5, "comment": "对外端口（external.py）默认关；enable --yes 才开；ML-DSA-65 指纹证书挑战验签＋限速；strict＝无 PQ 拒启；推荐 SSH 隧道（:ext tunnel）" },
+  "ff_lite": { "engine": "bing", "timeout_s": 30, "headless": true, "max_page_chars": 8000, "download_dir": "downloads", "max_download_mb": 200, "comment": "firefox lite 内核（ff_lite.py，壳内 :net）：联网搜索·取页·下载须 grant network（默认拒绝）；engine=bing|duckduckgo 失败自动互投；渲染优先 playwright 无头 Firefox、缺则 urllib（绝不自动装）；下载只落 <SMS_HOME>/downloads/，覆盖须 --force＋grant danger" },
+  "tts": { "enabled": false, "engine": "sapi5", "profile_name": "阿林娜", "voice": "Microsoft Huihui Desktop - Chinese (China)", "rate": 13.8, "pitch": "+0st", "volume": 100, "max_chars": 400, "comment": "TTS 阿林娜 alina（tts.py，壳内 :tts）：旧导航/屏幕阅读器式机械女声——SAPI5 本地合成、文本不出本机；默认关，:tts on 或 enabled=true 开启后模型输出逐句朗读（批25 新输出抢读·语速封顶 6 字/秒）；voice/rate(×10＝prosody%·-10..13.8·封顶13.8≈5.9字/秒)/pitch/volume 可调" }
+}

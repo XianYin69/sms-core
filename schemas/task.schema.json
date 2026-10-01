@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "skill_task",
+  "type": "object",
+  "required": ["schema", "version"],
+  "properties": {
+    "schema": { "const": "skill_task" },
+    "version": { "type": "string" },
+    "generated_at": { "type": "string" },
+    "intent": { "type": "string" },
+    "understanding": { "type": "string" },
+    "subtasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "goal": { "type": "string" },
+          "status": { "enum": ["pending", "running", "done"] }
+        }
+      }
+    },
+    "merged": { "type": "string" }
+  }
+}

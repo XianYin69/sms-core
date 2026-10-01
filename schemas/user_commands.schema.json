@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "sms_user_commands",
+  "description": "个性化指令文档：<SMS_HOME>/commands/user_commands.json；步骤模板以 script:/delegate:/say: 前缀区分执行方式，{arg} 占位符按 arg_names 顺序展开，{args} 收集余量参数",
+  "type": "object",
+  "required": ["schema", "version", "commands"],
+  "properties": {
+    "schema": { "const": "sms_user_commands" },
+    "version": { "type": "string" },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "description", "steps"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]*$" },
+          "description": { "type": "string" },
+          "arg_names": { "type": "array", "items": { "type": "string" } },
+          "steps": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^(script:|delegate:|say:)" }
+          }
+        }
+      }
+    }
+  }
+}

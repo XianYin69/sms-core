@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SMS 配置系统与网络壳数据契约",
+  "description": "settings.py 的默认段（skill/config/settings.default.json，运行时与 <SMS_HOME>/config/config.json 深合并）＋ model_meta 缓存 ＋ 对外端口信任表。真实用户配置与证书/密钥/token 一律存 <SMS_HOME>/，禁止落 skill 目录（resistance #2/#18）。",
+  "config_sections": {
+    "solo": {
+      "type": "object",
+      "props": ["enabled", "allow_danger", "never", "ttl_min", "max_ttl_min", "review_max_tokens", "notify"],
+      "note": "SOLO 模式（solo.py 唯一真源）：enabled＝权限免用户确认总开关（:solo on|off / F10→SOLO 模式），关闭时权限准入与未启用逐字一致；allow_danger＝自审可否放行 skill 目录写入（红线16·默认 false 仍须当轮 :grant danger）；never＝永不自审的键（默认 [\"remote\"]）；ttl_min/max_ttl_min＝自审授予时长与钳制上限（分钟）；review_max_tokens＝单次自审输出上限；notify＝自审授予/拒绝是否通报主输出窗口。授予落 permissions.json audit（solo 标记）＋event 链，:grant revoke <键> 即时收回（:grant <键> 0＝永久授予非收回）；后台与非交互路径不经本模块"
+    },     "llm_gateway": { "type": "object", "props": ["enabled", "base_url", "api_key", "api_key_env", "model", "max_tokens", "timeout", "temperature", "top_p"], "note": "api_key 展示层恒掩码（settings.maskv）" },
+    "model_meta": { "type": "object", "props": ["auto_refresh", "refresh_interval_min", "defaults.context_length", "defaults.max_output_tokens", "defaults.rpm"] },
+    "chains": { "type": "object", "props": ["default{enabled,merge_thr,prune_days,min_freq}"], "pattern": "^chains\\.(user|memory|logic|time|event|session|skill_call|tool_call|subsession|dialogue)\\.(enabled|merge_thr|prune_days|min_freq)$", "note": "knowledge 钉选链不可停用修剪，不受本段影响" },
+    "dream": { "type": "object", "props": ["enabled", "interval_min"], "note": "interval_min＝用户设置间隔（分钟·程序钳 5–720·默认 360）；next_run 运行时间戳恒程序按间隔计算写 chains/next_run_ts（settings eff 剔除·不可配置）", "legacy": "旧顶层 dream_interval_min 已废弃（eff 剔除）" },
+    "web_shell": { "type": "object", "props": ["enabled", "host", "port"], "constraint": "host 仅 127.0.0.1/::1（本地加密网页壳）" },
+    "external": { "type": "object", "props": ["enabled", "interface", "port", "pq_mode", "session_ttl_min", "max_fail_per_min"], "constraint": "enabled 默认 false；enable 须 --yes 当轮确认（resistance #16/#18）" }
+  },
+  "models_cache": {
+    "file": "<SMS_HOME>/config/models.json",
+    "shape": { "ts": "string", "ts_epoch": "number", "base_url": "string", "err": "string", "models": { "<model_id>": { "context_length": "number|null", "max_output_tokens": "number|null", "rpm": "number|null", "tpm": "number|null", "source": "upstream|probe|listing|default" } } }
+  },
+  "trusted_clients": {
+    "file": "<SMS_HOME>/shell/external/trusted.json",
+    "shape": [{ "fpr": "sha256(公钥DER) hex", "pub": "base64 DER 公钥", "algo": "mldsa65|ed25519", "note": "string", "added": "ISO 时间", "expires": "ISO 时间|null" }],
+    "gate": "仅本地端 external.py enroll/revoke 可改；外部请求凭 私钥签 nonce 验签后获 TTL 会话 token"
+  },
+  "net_shell_runtime": {
+    "files": "<SMS_HOME>/shell/{tls/cert.pem,tls/key.pem,web.token,web_shell.pid,web_shell.port,external.pid,external.port,web.log,external.log}",
+    "auth": { "web_shell": "X-SMS-Token 配对 token（常时比较）＋Host 防重绑定", "external": "enroll 指纹→pair 挑战→verify PQ 验签→Bearer TTL token→/api/chat" }
+  }
+}

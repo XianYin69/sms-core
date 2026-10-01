@@ -1,0 +1,18 @@
+{
+ "$schema": "http://json-schema.org/draft-07/schema#",
+ "title": "skill_manage_system chain fragment",
+ "type": "object",
+ "description": "<SMS_HOME>/chains/<链>/<id>.json 十一链碎片契约：链＝user/memory/logic/time/event/session/skill_call/tool_call/subsession/dialogue/knowledge（钉选）；碎片＝语句化·最小化 JSON，含向量（64 维哈希投影，语句指向）、频次（使用计数）与边（语义/时间/因果/引用，树形·神经网络型）；dream 产物 retrieval.md/violations.md 同目录",
+ "required": ["id", "chain", "ts", "text", "vec", "freq", "edges"],
+ "properties": {
+  "id": { "type": "string", "pattern": "^[0-9a-f]{10}$" },
+  "chain": { "type": "string", "enum": ["user", "memory", "logic", "time", "event", "session", "skill_call", "tool_call", "subsession", "dialogue", "knowledge"] },
+  "ts": { "type": "string" },
+  "text": { "type": "string", "minLength": 1 },
+  "vec": { "type": "array", "items": { "type": "number" } },
+  "freq": { "type": "integer", "minimum": 1 },
+  "edges": { "type": "array", "items": { "type": "array", "minItems": 2, "maxItems": 3, "items": { "type": ["string", "number"] } } },
+  "dead": { "type": "boolean", "description": "merge_near/prune 折叠标记（原文仍留存可回溯）" },
+  "pruned": { "type": "string", "description": "prune 执行日期（仅陈旧低频碎片）" }
+ }
+}

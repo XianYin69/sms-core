@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "skill_deps",
+  "description": "SMS/registry/deps.json 契约：每技能的关联 python（AST 扫 .py import）与关联 skill（.md 提及其他注册技能）",
+  "type": "object",
+  "required": ["schema", "version", "skills"],
+  "properties": {
+    "schema": { "const": "skill_deps" },
+    "version": { "type": "string" },
+    "generated_at": { "type": "string" },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["skill_id", "related_skills", "related_python"],
+        "properties": {
+          "skill_id": { "type": "string" },
+          "related_skills": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["to", "kind"],
+              "properties": {
+                "to": { "type": "string", "description": "被提及技能 id（register.json 内）" },
+                "kind": { "enum": ["depends", "independent", "related"], "description": "提及语境判定：委托/依赖=depends；独立于=independent；其余=related" },
+                "evidence": { "type": "string", "description": "含提及的 .md 片段（±30 字，压缩空白）" }
+              }
+            }
+          },
+          "related_python": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["module", "dist", "installed"],
+              "properties": {
+                "module": { "type": "string", "description": "顶层 import 名（已剔除标准库与技能自带模块）" },
+                "dist": { "type": "string", "description": "pip 发行名（ALIAS 表优先，次 packages_distributions，兜底同 module）" },
+                "installed": { "type": "boolean", "description": "当前环境可导入即 true" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

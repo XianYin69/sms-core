@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "skill_manage_system sandbox",
+  "type": "object",
+  "description": "SMS 沙盒状态契约：<SMS_HOME>/tmp/sandbox/<id>/.sms_sandbox.json",
+  "properties": {
+    "id": { "type": "string", "description": "沙盒目录名（时间戳 + 安全名称）" },
+    "state": {
+      "type": "string",
+      "enum": ["active", "delivered", "cleaned"],
+      "description": "沙盒生命周期状态"
+    },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" },
+    "target": {
+      "type": ["string", "null"],
+      "description": "deliver 成功后的用户目标路径；未交付为 null"
+    }
+  },
+  "required": ["id", "state"]
+}

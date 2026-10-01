@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+sessions/
+tmp/
+registry/
+*.bak*
+config/config.json
+.kilo/

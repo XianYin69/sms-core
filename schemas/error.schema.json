@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "skill_manage_system skill errors",
+  "type": "object",
+  "description": "SMS/errors/skill_errors.json 契约：同一(skill,where)合并计数，未解决≥3 建议启用 Skill_Generator self_update",
+  "required": ["updated", "entries"],
+  "properties": {
+    "updated": { "type": "string" },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["skill", "where", "count", "status"],
+        "properties": {
+          "skill": { "type": "string" },
+          "where": { "type": "string", "description": "出错位置：文件:函数/行 或步骤名" },
+          "msg": { "type": "string" },
+          "count": { "type": "integer", "minimum": 1 },
+          "first": { "type": "string" },
+          "last": { "type": "string" },
+          "status": { "type": "string", "enum": ["open", "resolved"] }
+        }
+      }
+    }
+  }
+}
