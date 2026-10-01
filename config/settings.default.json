@@ -1,167 +1,170 @@
 {
-  "llm_gateway": {
-    "enabled": false,
-    "base_url": "",
-    "api_key": "",
-    "api_key_env": null,
-    "model": "auto",
-    "max_tokens": 4096,
-    "stream": true,
-    "timeout": 120,
-    "temperature": null,
-    "top_p": null,
-    "reasoning_effort": null,
-    "retries": 3,
-    "stream_max_chunks": 20000,
-    "comment": "SMS 原生大模型网关（gateway.py）：base_url+api_key+model 即可对话；stream=true 经 gateway_sse.py 逐段吐字（false 回退整轮等待）；temperature/top_p 为模型参数（null＝不发送，用上游默认）；reasoning_effort＝推理等级（low|medium|high·null＝不发送——chat/SSE 请求体 reasoning_effort 字段，F4 可改）；retries＝提供商（大模型网关）访问失败自动重试次数（批12 防任务半途断·2026-09-29 默认 1→3：非流式在 gateway._send、流式在 gateway_sse.stream 各自重试，指数退避 1.2s 起封顶 10s，HTTP 4xx 与 stop 不重试，已吐字的流式不重试防重复上屏；重试耗尽即本轮收口并交接续续跑）；stream_max_chunks＝流式吐块保险上限（防无限慢流卡死）；密钥可 api_key_env 指向环境变量"
+ "llm_gateway": {
+  "enabled": false,
+  "base_url": "",
+  "api_key": "",
+  "api_key_env": null,
+  "model": "auto",
+  "max_tokens": 4096,
+  "stream": true,
+  "timeout": 120,
+  "temperature": null,
+  "top_p": null,
+  "reasoning_effort": null,
+  "retries": 3,
+  "stream_max_chunks": 20000,
+  "comment": "SMS 原生大模型网关（gateway.py）：base_url+api_key+model 即可对话；stream=true 经 gateway_sse.py 逐段吐字（false 回退整轮等待）；temperature/top_p 为模型参数（null＝不发送，用上游默认）；reasoning_effort＝推理等级（low|medium|high·null＝不发送——chat/SSE 请求体 reasoning_effort 字段，F4 可改）；retries＝提供商（大模型网关）访问失败自动重试次数（批12 防任务半途断·2026-09-29 默认 1→3：非流式在 gateway._send、流式在 gateway_sse.stream 各自重试，指数退避 1.2s 起封顶 10s，HTTP 4xx 与 stop 不重试，已吐字的流式不重试防重复上屏；重试耗尽即本轮收口并交接续续跑）；stream_max_chunks＝流式吐块保险上限（防无限慢流卡死）；密钥可 api_key_env 指向环境变量"
+ },
+ "model_meta": {
+  "auto_refresh": true,
+  "refresh_interval_min": 720,
+  "defaults": {
+   "context_length": 8192,
+   "max_output_tokens": 1024,
+   "rpm": null
   },
-  "model_meta": {
-    "auto_refresh": true,
-    "refresh_interval_min": 720,
-    "defaults": {
-      "context_length": 8192,
-      "max_output_tokens": 1024,
-      "rpm": null
-    },
-    "comment": "上游模型元数据自动抓取（model_meta.py）：GET /models 扩展字段＋探测响应头 x-ratelimit；缓存 <SMS_HOME>/config/models.json；defaults＝上游未提供时的兜底标注"
+  "comment": "上游模型元数据自动抓取（model_meta.py）：GET /models 扩展字段＋探测响应头 x-ratelimit；缓存 <SMS_HOME>/config/models.json；defaults＝上游未提供时的兜底标注"
+ },
+ "caps": {
+  "gateway_rounds": 0,
+  "skill_rounds": 0,
+  "ask_rounds": 0,
+  "comment": "agent 循环轮次上限（熔断保险丝）：0＝无限（默认——设上限会令长任务中途断裂强制收口）；>0＝达上限强制收口（子技能收不了口卡死时可设）。gateway_rounds＝gateway.py 对话/工具主循环；skill_rounds＝skill 工具对等派发对话；ask_rounds＝ask 子问答循环；F4 图形配置或 :config caps.<键> 可调"
+ },
+ "task": {
+  "auto_table": true,
+  "auto_continue": true,
+  "max_continue": 5,
+  "max_parallel": 3,
+  "comment": "任务表（task_table.py 制表器·批12·批14①门控·批18 主流程守卫）：auto_table＝仅复杂任务（拆步≥2且至少一步命中执行性技能）送网关前自动拆步建表（粗分种子·行数无上限·模型首轮据实改表并按步 task_plan 推进）；单步/纯问答/无技能命中多步一律免表直送；auto_continue＝主流程守卫（批18·相信大模型·批23 收口＝形式停止非实质完成）——话语带任务表且仍有未完成行时禁止收口，注入续推提示让模型继续派发/改表（仅调度对话生效·派发对话收口返回后续推）；max_continue＝守卫连续续推上限（0＝无限·防模型反复宣告完成不推进时熔断转人工）；max_parallel＝task 工具并发子任务上限（parallel=false 时改依序串行）"
+ },
+ "shell": {
+  "exec_timeout": 600,
+  "comment": "系统 shell 与子脚本单条超时（秒·sys_shells.run 与 shell_core.run_script 共用·到点强杀防卡死）；stall_timeout＝子进程无输出多久算卡住；parallel＝批27 用户「多个用户输入无需排队等待·全部并行处理」：TUI 每条输入各起一个 worker 同屏并发（false＝退回旧的 busy 排队续发）；max_parallel＝同时在跑的任务上限（0＝无限·到上限后新输入排队，有空位自动续发）；detail_bus＝批27 用户「其他会话任务的详细信息（推导·工具使用·命令行输出）也应写进主 shell 详细细节」：各会话明细经 detail_bus 落 <SMS_HOME>/runtime/details.jsonl，主壳 F9/右栏增量合并（false＝只记本会话）",
+  "stall_timeout": 120,
+  "parallel": true,
+  "max_parallel": 4,
+  "detail_bus": true
+ },
+ "agent": {
+  "exec_timeout": 1800,
+  "stall_timeout": 300,
+  "comment": "agent CLI 子进程（sms-shell 数据流回退执行器·agent_stream.py）的阻塞应对阈值：T3＝exec_timeout 总预算（到点 kill_tree 整棵树收口），T2＝stall_timeout 静默（连续无新输出行·且 proc_guard 归因非 computing 闷头算）即判卡死收口；半阈先预警；末行像交互提示（y/n/密码/input(）＝非交互壳等不到输入，宽限 8s 即收口点名；刷屏≥400 行/秒＝疑似死循环提前收口。旧版此处是裸 readline 循环＝最恶劣阻塞：CLI 卡住时本壳永久拿不回控制权、任务表无人续推（2026-10-01 表 001-161413-507 t4）",
+  "webfetch_retries": 2
+ },
+ "qq": {
+  "handle_stall": 240,
+  "handle_stall_llm": 600,
+  "net_timeout": 30,
+  "tiered_timeout": true,
+  "comment": "QQ 通道可调项（qq_dispatch.py 入站 worker·config/qq.json 同名键可覆盖）：handle_stall＝单条入站消息静默多少秒判为卡死（交 run_watch.run_with_timeout 的 stall 参数，到点中止该条并恢复通道，防一条 ask 永久卡死唯一 worker；同段 handle_timeout＝该条墙钟总上限，默认 900s）；分级（2026-10-01 做梦审计错误1·error 链 2ab90541b9）：T1＝net_timeout 网络/网关单请求自计时即抛（LLM 侧另有 llm_gateway.timeout）；T2＝阶段静默，普通阶段用 handle_stall、长等待阶段（网关请求/技能对话）用 handle_stall_llm 宽档，由 qq_inbound.set_stage 声明；T3＝handle_timeout 总预算；tiered_timeout＝false 退回旧一档平铺"
+ },
+ "close_guard": {
+  "enabled": true,
+  "comment": "关闭/重启二次确认总开关（close_guard.ask() 与 shell_lifecycle.cmd() 共用）：true＝首枪拦下、15 秒内第二枪才真退（窗口 X／Ctrl+C／:restart／:shutdown）；false＝首枪即放行，仍向远端 QQ 通报「SMS 关闭中／重启中」，只是不再要求二次确认"
+ },
+ "chains": {
+  "default": {
+   "enabled": true,
+   "merge_thr": 0.92,
+   "prune_days": 14,
+   "min_freq": 1
   },
-  "caps": {
-    "gateway_rounds": 0,
-    "skill_rounds": 0,
-    "ask_rounds": 0,
-    "comment": "agent 循环轮次上限（熔断保险丝）：0＝无限（默认——设上限会令长任务中途断裂强制收口）；>0＝达上限强制收口（子技能收不了口卡死时可设）。gateway_rounds＝gateway.py 对话/工具主循环；skill_rounds＝skill 工具对等派发对话；ask_rounds＝ask 子问答循环；F4 图形配置或 :config caps.<键> 可调"
-  },
-  "task": {
-    "auto_table": true,
-    "auto_continue": true,
-    "max_continue": 5,
-    "max_parallel": 3,
-    "comment": "任务表（task_table.py 制表器·批12·批14①门控·批18 主流程守卫）：auto_table＝仅复杂任务（拆步≥2且至少一步命中执行性技能）送网关前自动拆步建表（粗分种子·行数无上限·模型首轮据实改表并按步 task_plan 推进）；单步/纯问答/无技能命中多步一律免表直送；auto_continue＝主流程守卫（批18·相信大模型·批23 收口＝形式停止非实质完成）——话语带任务表且仍有未完成行时禁止收口，注入续推提示让模型继续派发/改表（仅调度对话生效·派发对话收口返回后续推）；max_continue＝守卫连续续推上限（0＝无限·防模型反复宣告完成不推进时熔断转人工）；max_parallel＝task 工具并发子任务上限（parallel=false 时改依序串行）"
-  },
-  "shell": {
-    "exec_timeout": 600,
-    "comment": "系统 shell 与子脚本单条超时（秒·sys_shells.run 与 shell_core.run_script 共用·到点强杀防卡死）",
-    "stall_timeout": 120
-  },
-  "agent": {
-    "exec_timeout": 1800,
-    "stall_timeout": 300,
-    "comment": "agent CLI 子进程（sms-shell 数据流回退执行器·agent_stream.py）的阻塞应对阈值：T3＝exec_timeout 总预算（到点 kill_tree 整棵树收口），T2＝stall_timeout 静默（连续无新输出行·且 proc_guard 归因非 computing 闷头算）即判卡死收口；半阈先预警；末行像交互提示（y/n/密码/input(）＝非交互壳等不到输入，宽限 8s 即收口点名；刷屏≥400 行/秒＝疑似死循环提前收口。旧版此处是裸 readline 循环＝最恶劣阻塞：CLI 卡住时本壳永久拿不回控制权、任务表无人续推（2026-10-01 表 001-161413-507 t4）",
-    "webfetch_retries": 2
-  },
-  "qq": {
-    "handle_stall": 240,
-    "handle_stall_llm": 600,
-    "net_timeout": 30,
-    "tiered_timeout": true,
-    "comment": "QQ 通道可调项（qq_dispatch.py 入站 worker·config/qq.json 同名键可覆盖）：handle_stall＝单条入站消息静默多少秒判为卡死（交 run_watch.run_with_timeout 的 stall 参数，到点中止该条并恢复通道，防一条 ask 永久卡死唯一 worker；同段 handle_timeout＝该条墙钟总上限，默认 900s）；分级（2026-10-01 做梦审计错误1·error 链 2ab90541b9）：T1＝net_timeout 网络/网关单请求自计时即抛（LLM 侧另有 llm_gateway.timeout）；T2＝阶段静默，普通阶段用 handle_stall、长等待阶段（网关请求/技能对话）用 handle_stall_llm 宽档，由 qq_inbound.set_stage 声明；T3＝handle_timeout 总预算；tiered_timeout＝false 退回旧一档平铺"
-  },
-  "close_guard": {
-    "enabled": true,
-    "comment": "关闭/重启二次确认总开关（close_guard.ask() 与 shell_lifecycle.cmd() 共用）：true＝首枪拦下、15 秒内第二枪才真退（窗口 X／Ctrl+C／:restart／:shutdown）；false＝首枪即放行，仍向远端 QQ 通报「SMS 关闭中／重启中」，只是不再要求二次确认"
-  },
-  "chains": {
-    "default": {
-      "enabled": true,
-      "merge_thr": 0.92,
-      "prune_days": 14,
-      "min_freq": 1
-    },
-    "comment": "各链设置：chains.<链名> 覆盖 default（user/memory/logic/time/event/session/skill_call/tool_call/subsession/dialogue）；enabled=false 即停写该链；knowledge 钉选链不受修剪影响；读写时序分层（批17·chain_timing.py）：在谈链 user/logic/dialogue/session/skill_call/tool_call/subsession 会话中即写，收口链 memory/knowledge/time/event 对话中缓冲、收口统一落盘（省写盘/git/检索噪音）"
-  },
-  "dream": {
-    "enabled": true,
-    "interval_min": 360,
-    "roam": true,
-    "roam_pages": 2,
-    "roam_keep": 4,
-    "roam_topics": [],
-    "comment": "做梦机制（批17 后台化）：enabled＝开关；interval_min＝用户设置的做梦间隔（分钟·程序钳 5–720·默认360）；运行时间戳由程序按间隔自动计算写 chains/next_run_ts 到点触发（next_run 非配置键不可手动设）；执行＝分离子进程后台跑（dream_bg.py·日志 <SMS_HOME>/logs/dream.log·dream.lock 防重复），对话前台零占用；做梦＝整理十一链与会话＋错误自修登记（dream_fix→Skill_Generator self_update·错误经 skill_errors 直调 debug 错误通道留现场）＋记忆沉淀（dream_mem→memory 链·私人信息经 privacy 变换入 privacy/ 供个性化）＋网络漫游拓扑经验（dream_roam：roam＝开关·roam_topics＝话题清单（空则取 user/dialogue 链高频语句）·roam_pages＝每轮取页上限·roam_keep＝每页蒸馏条数·须 grant network 否则跳过）；:dream status|run"
-  },
-  "web_shell": {
-    "enabled": true,
-    "host": "127.0.0.1",
-    "port": 8737,
-    "comment": "本地加密网页壳（web_shell.py）：HTTPS 自签指纹证书＋配对 token；:web start|stop|token",
-    "show_token": true
-  },
-  "external": {
-    "enabled": false,
-    "interface": "0.0.0.0",
-    "port": 8738,
-    "pq_mode": "auto",
-    "session_ttl_min": 240,
-    "max_fail_per_min": 5,
-    "comment": "对外端口（external.py）默认关闭；enable --yes 才开；ML-DSA-65（cryptography PQ，FIPS 204）指纹证书挑战验签后才给会话 token；pq_mode strict＝无 PQ 拒启（降级仅 classic/auto）；建议配合 SSH 隧道访问"
-  },
-  "ff_lite": {
-    "engine": "bing",
-    "timeout_s": 30,
-    "headless": true,
-    "max_page_chars": 8000,
-    "download_dir": "downloads",
-    "max_download_mb": 200,
-    "comment": "firefox lite 内核（ff_lite.py）：联网搜索·取页·下载——动作须 grant network（默认拒绝）；engine=bing|duckduckgo（ddg lite 端点国内常不可达故默认 bing，search 失败自动改投另一引擎）；渲染优先 playwright 随包无头 Firefox，缺失回退 urllib（明确提示·绝不自动装依赖）；下载只落 <SMS_HOME>/downloads/，覆盖须 --force＋grant danger"
-  },
-  "tts": {
-    "enabled": false,
-    "engine": "sapi5",
-    "profile_name": "阿林娜",
-    "voice": "Microsoft Huihui Desktop - Chinese (China)",
-    "rate": 13.8,
-    "pitch": "+0st",
-    "volume": 100,
-    "max_chars": 400,
-    "comment": "TTS 阿林娜（alina）：旧导航/屏幕阅读器式机械女声——Windows SAPI5 本地合成、文本不出本机；默认关，壳内 :tts on 开启后模型输出逐句朗读（批25 新输出抢读·语速封顶 6 字/秒）；voice/rate(×10＝prosody%·-10..13.8·封顶13.8≈5.9字/秒)/pitch/volume 可调"
-  },
-  "debug": {
-    "enabled": false,
-    "path": "",
-    "comment": "调试模式：元指令/话语派发·脚本 rc 与 stderr·msg_flow 工具信封·异常 traceback 追加落日志；path 空＝默认 <SMS_HOME>/logs/debug.log（>512KB 截尾），可填绝对路径自定义输出；亦可 :debug on|off、启动器 --debug、env SMS_DEBUG=1；顶栏显 DEB"
-  },
-  "ui": {
-    "mode": "chat",
-    "details_panel": true,
-    "max_output_lines": 400,
-    "comment": "sms-shell Textual TUI：mode（F7 三态 chat/view/exec〔直通＝输入即系统 shell〕）·details_panel＝右栏显示详细细节·max_output_lines＝主输出区保留行数（超出折叠至右栏）；readline 壳与 bin 原生 ps1 壳恒等同 chat"
-  },
-  "agent_tools": {
-    "comment": "大模型可用工具权限（agent_dispatch.tools_schema 门控·菜单 F1→大模型工具权限 或 :tools enable|disable <name>·写 config.json）：false＝对模型隐藏且拒调；skill/user_send/thinking_chain/chain/debate/ask_user 建议常开（chain＝批17 模型直读写链记忆，debate＝正反双链自辩）",
-    "exec": true,
-    "read": true,
-    "write": true,
-    "skill": true,
-    "ask": true,
-    "ask_user": true,
-    "task": true,
-    "task_detail": true,
-    "user_send": true,
-    "thinking_chain": true,
-    "chain": true,
-    "debate": true
-  },
-  "hud": {
-    "enabled": false,
-    "auto": true,
-    "comment": "界面顶面 HUD 浮窗（hud.py·置顶/穿透/不抢焦点）：enabled＝是否允许浮窗（:hud start 需先启用·TUI 菜单可开）；auto＝任务进行时自动常显"
-  },
-  "tui": {
-    "console_font_fix": true
-  },
-  "solo": {
-    "enabled": false,
-    "allow_danger": false,
-    "never": [
-      "remote"
-    ],
-    "ttl_min": 30,
-    "max_ttl_min": 120,
-    "review_max_tokens": 200,
-    "notify": true,
-    "comment": "SOLO 模式（solo.py 唯一真源·权限免用户确认：缺权限时由大模型经 llm_gateway 单次自审决定是否授予）：enabled＝总开关（:solo on|off 或 F10→SOLO 模式，关闭时权限准入与未启用 SOLO 逐字一致）；allow_danger＝自审是否可放行 skill 目录写入（红线16·默认 false 仍须当轮 :grant danger）；never＝永不自审的键（默认 remote·远程越名单不受自审影响）；ttl_min＝自审授予默认时长（分钟）；max_ttl_min＝时长上限（模型给再高也钳到此值）；review_max_tokens＝单次自审输出上限；notify＝每次自审授予/拒绝是否向主输出窗口通报。全部自审授予落 permissions.json audit（solo 标记）＋event 链，可 :grant revoke <键> 即时收回（:grant <键> 0＝永久授予非收回）；后台与非交互路径（auto_compress/cache_cleanup/dep_fetch/dream_*/deploy）不经本模块；批27 重试治理：analyze_retry＝SOLO 下阻塞/错误先经 solo.analyze 根因分析再决定 retry/fix/abort（关＝与旧行为逐字一致）；max_same_error＝同一错误签名连续允许次数（超即强制 abort 转人工，无限重试的「有进展」边界）；retry_backoff_cap＝分析后重试的退避封顶秒；analyze_max_tokens＝单次分析输出上限",
-    "analyze_retry": true,
-    "max_same_error": 5,
-    "retry_backoff_cap": 30.0,
-    "analyze_max_tokens": 300
-  }
+  "comment": "各链设置：chains.<链名> 覆盖 default（user/memory/logic/time/event/session/skill_call/tool_call/subsession/dialogue）；enabled=false 即停写该链；knowledge 钉选链不受修剪影响；读写时序分层（批17·chain_timing.py）：在谈链 user/logic/dialogue/session/skill_call/tool_call/subsession 会话中即写，收口链 memory/knowledge/time/event 对话中缓冲、收口统一落盘（省写盘/git/检索噪音）"
+ },
+ "dream": {
+  "enabled": true,
+  "interval_min": 360,
+  "roam": true,
+  "roam_pages": 2,
+  "roam_keep": 4,
+  "roam_topics": [],
+  "comment": "做梦机制（批17 后台化）：enabled＝开关；interval_min＝用户设置的做梦间隔（分钟·程序钳 5–720·默认360）；运行时间戳由程序按间隔自动计算写 chains/next_run_ts 到点触发（next_run 非配置键不可手动设）；执行＝分离子进程后台跑（dream_bg.py·日志 <SMS_HOME>/logs/dream.log·dream.lock 防重复），对话前台零占用；做梦＝整理十一链与会话＋错误自修登记（dream_fix→Skill_Generator self_update·错误经 skill_errors 直调 debug 错误通道留现场）＋记忆沉淀（dream_mem→memory 链·私人信息经 privacy 变换入 privacy/ 供个性化）＋网络漫游拓扑经验（dream_roam：roam＝开关·roam_topics＝话题清单（空则取 user/dialogue 链高频语句）·roam_pages＝每轮取页上限·roam_keep＝每页蒸馏条数·须 grant network 否则跳过）；:dream status|run"
+ },
+ "web_shell": {
+  "enabled": true,
+  "host": "127.0.0.1",
+  "port": 8737,
+  "comment": "本地加密网页壳（web_shell.py）：HTTPS 自签指纹证书＋配对 token；:web start|stop|token",
+  "show_token": true
+ },
+ "external": {
+  "enabled": false,
+  "interface": "0.0.0.0",
+  "port": 8738,
+  "pq_mode": "auto",
+  "session_ttl_min": 240,
+  "max_fail_per_min": 5,
+  "comment": "对外端口（external.py）默认关闭；enable --yes 才开；ML-DSA-65（cryptography PQ，FIPS 204）指纹证书挑战验签后才给会话 token；pq_mode strict＝无 PQ 拒启（降级仅 classic/auto）；建议配合 SSH 隧道访问"
+ },
+ "ff_lite": {
+  "engine": "bing",
+  "timeout_s": 30,
+  "headless": true,
+  "max_page_chars": 8000,
+  "download_dir": "downloads",
+  "max_download_mb": 200,
+  "comment": "firefox lite 内核（ff_lite.py）：联网搜索·取页·下载——动作须 grant network（默认拒绝）；engine=bing|duckduckgo（ddg lite 端点国内常不可达故默认 bing，search 失败自动改投另一引擎）；渲染优先 playwright 随包无头 Firefox，缺失回退 urllib（明确提示·绝不自动装依赖）；下载只落 <SMS_HOME>/downloads/，覆盖须 --force＋grant danger"
+ },
+ "tts": {
+  "enabled": false,
+  "engine": "sapi5",
+  "profile_name": "阿林娜",
+  "voice": "Microsoft Huihui Desktop - Chinese (China)",
+  "rate": 13.8,
+  "pitch": "+0st",
+  "volume": 100,
+  "max_chars": 400,
+  "comment": "TTS 阿林娜（alina）：旧导航/屏幕阅读器式机械女声——Windows SAPI5 本地合成、文本不出本机；默认关，壳内 :tts on 开启后模型输出逐句朗读（批25 新输出抢读·语速封顶 6 字/秒）；voice/rate(×10＝prosody%·-10..13.8·封顶13.8≈5.9字/秒)/pitch/volume 可调"
+ },
+ "debug": {
+  "enabled": false,
+  "path": "",
+  "comment": "调试模式：元指令/话语派发·脚本 rc 与 stderr·msg_flow 工具信封·异常 traceback 追加落日志；path 空＝默认 <SMS_HOME>/logs/debug.log（>512KB 截尾），可填绝对路径自定义输出；亦可 :debug on|off、启动器 --debug、env SMS_DEBUG=1；顶栏显 DEB"
+ },
+ "ui": {
+  "mode": "chat",
+  "details_panel": true,
+  "max_output_lines": 400,
+  "comment": "sms-shell Textual TUI：mode（F7 三态 chat/view/exec〔直通＝输入即系统 shell〕）·details_panel＝右栏显示详细细节·max_output_lines＝主输出区保留行数（超出折叠至右栏）；readline 壳与 bin 原生 ps1 壳恒等同 chat"
+ },
+ "agent_tools": {
+  "comment": "大模型可用工具权限（agent_dispatch.tools_schema 门控·菜单 F1→大模型工具权限 或 :tools enable|disable <name>·写 config.json）：false＝对模型隐藏且拒调；skill/user_send/thinking_chain/chain/debate/ask_user 建议常开（chain＝批17 模型直读写链记忆，debate＝正反双链自辩）",
+  "exec": true,
+  "read": true,
+  "write": true,
+  "skill": true,
+  "ask": true,
+  "ask_user": true,
+  "task": true,
+  "task_detail": true,
+  "user_send": true,
+  "thinking_chain": true,
+  "chain": true,
+  "debate": true
+ },
+ "hud": {
+  "enabled": false,
+  "auto": true,
+  "comment": "界面顶面 HUD 浮窗（hud.py·置顶/穿透/不抢焦点）：enabled＝是否允许浮窗（:hud start 需先启用·TUI 菜单可开）；auto＝任务进行时自动常显"
+ },
+ "tui": {
+  "console_font_fix": true
+ },
+ "solo": {
+  "enabled": false,
+  "allow_danger": false,
+  "never": [
+   "remote"
+  ],
+  "ttl_min": 30,
+  "max_ttl_min": 120,
+  "review_max_tokens": 200,
+  "notify": true,
+  "comment": "SOLO 模式（solo.py 唯一真源·权限免用户确认：缺权限时由大模型经 llm_gateway 单次自审决定是否授予）：enabled＝总开关（:solo on|off 或 F10→SOLO 模式，关闭时权限准入与未启用 SOLO 逐字一致）；allow_danger＝自审是否可放行 skill 目录写入（红线16·默认 false 仍须当轮 :grant danger）；never＝永不自审的键（默认 remote·远程越名单不受自审影响）；ttl_min＝自审授予默认时长（分钟）；max_ttl_min＝时长上限（模型给再高也钳到此值）；review_max_tokens＝单次自审输出上限；notify＝每次自审授予/拒绝是否向主输出窗口通报。全部自审授予落 permissions.json audit（solo 标记）＋event 链，可 :grant revoke <键> 即时收回（:grant <键> 0＝永久授予非收回）；后台与非交互路径（auto_compress/cache_cleanup/dep_fetch/dream_*/deploy）不经本模块；批27 重试治理：analyze_retry＝SOLO 下阻塞/错误先经 solo.analyze 根因分析再决定 retry/fix/abort（关＝与旧行为逐字一致）；max_same_error＝同一错误签名连续允许次数（超即强制 abort 转人工，无限重试的「有进展」边界）；retry_backoff_cap＝分析后重试的退避封顶秒；analyze_max_tokens＝单次分析输出上限",
+  "analyze_retry": true,
+  "max_same_error": 5,
+  "retry_backoff_cap": 30.0,
+  "analyze_max_tokens": 300
+ }
 }

@@ -54,6 +54,14 @@ metadata:
 - 唯一接缝＝`runtime_bind.set_runner(fn)`/`set_pending(fn)` 注册回调：core 侧要「把一句话语交壳执行／跑壳侧待办」一律经 `runtime_bind.run()/pending_run()`，不认 `shell_*` 模块名；壳侧 `shell_core`/`shell_lifecycle` 于自身 import 时登记。壳未绑定的降级＝先惰性 import 兜底并回填注册，兜底也失败则 `run()` 回明确错误串「未绑定壳运行器…」（不抛异常，调用方自决改走 `agent_stream.ask`/`gateway.run` 纯核链路）、`pending_run()` 回 None 静默跳过（与「无待办」同义）——绝不静默改行为。
 - 审计 `python -B skill/scripts/sep_audit.py` 口径：shell→core 50 条单向边（壳站在核上·合法）·core→shell 反向边 0·seam→shell 2（契约允许）→ `verdict=SEPARATED`；已接入根入口 [sms.py](../sms.py) 开箱即用与 `doctor` 体检，新增 core→shell 反向 import 会在启动/体检被拦下并报 violations。
 
+## 并行输入与跨会话详细细节（批27②③）
+
+- **输入不排队·全部并行**（用户「当有多个用户输入输入到 sms 时，输入的会话无需排队等待·全部并行处理」）：TUI 每条输入各起一个 worker 线程并发跑（`shell_tui_flow.Flow._start`），不再等上一条收口；`shell.parallel`＝开关（false 退回旧排队）、`shell.max_parallel`＝同时上限（默认 4·0＝无限·到顶的新输入排队，有空位由 `_done` 自动续发）。
+- **任务隔离三件套**（并行的前提·否则串台）：`chains.ACTIVE` 改线程本地（A 的 conv 不被 B 覆写·信封/任务表/链 member 边各认自己）·`stop_channel` 旗标按任务（`bind(tid)`＋`request(why, tid)`·省略 tid 且未绑＝旧广播语义·老调用点零改动）·`ask_channel` 按任务分队（`poll_any()` 返回 (tid, 问题)·`reply(text, tid)` 回得对线程·A 的提问不吃掉 B 的输入）。
+- **stop 语义升级**：裸 `stop/停止`＝停全部在跑任务；`stop <任务号>`（如 `stop t2`）＝只停那一个，其余不受影响；多任务时主输出与 F9 明细行带 `[t1]/[t2]` 前缀。
+- **其他会话的明细进主壳 F9**（用户「其他会话任务的详细信息（推导，工具使用，命令行输出）也应该写在主 shell 的详细细节里」）：新核侧模块 `detail_bus.py`＝追加式 jsonl 总线 `<SMS_HOME>/runtime/details.jsonl`（512KB 截尾保 256KB·写失败静默）；`msg_flow.make()` 是唯一投递口——凡 tool/skill/edit/sh/step/task/reasoning/err 信封（`msg_flow.BUS`）自动入总线，故网页端/QQ 远程/计划任务/后台任务/别的壳进程的推导·工具·命令行输出全都汇过来；主壳 `Flow.bus_poll` 每 1s 按字节偏移增量消费（`tail()`＝O(新增字节) 不整档扫），以〔sess·kind〕前缀并入 `app.details`（上限 60→150 条），本会话自身行由 `split` 实时入册故按 sess 去重不重复。开关 `shell.detail_bus`（或 env `SMS_DETAIL_BUS=0`）；手查 `:detail bus [n]`／`python -B detail_bus.py tail [n]`。
+- 红线不破：`detail_bus` 只依赖 `resolve_home`，core 侧绝不 import `shell_*`（`sep_audit` 口径不变）。
+
 ## 红线
 
 - 不得删除 [resistance/](resistance/resistance.md) 约束；SMS 运行时数据与一切缓存文件（`__pycache__`/截图/tmp/日志/用户 config.json）不得写入任何 skill 目录；子 skill 未指定路径的新建目录必须经 [resolve_home.py](scripts/resolve_home.py) 分配到 `<SMS_HOME>/tmp/`，工程任务优先用 [sandbox.py](scripts/sandbox.py) 建 `<SMS_HOME>/tmp/sandbox/<id>`，并向子 skill 暴露该能力；子技能运行完必须回到 SMS；**LLM 主导·脚本辅助（批16·取代旧「SMS 本体不得直接回答用户需求」）＋批17 相信大模型**——纯知识问答/闲聊直答免跑子技能，凡要动手经 dispatch/工具真执行、模型整合作答（[SMS 路由] 打分仅供参考；链经验由模型 chain 工具直读写、脚本不代裁决；决策岔路 debate 自辩＋做梦后台自修＝人多在回路旁、仅高危节点回人在回路确认；无匹配且属新领域→委托 Skill_Generator 创建后执行；仍不可得→明确拒绝并说明，禁止空口声称已执行）。

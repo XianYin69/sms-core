@@ -67,3 +67,16 @@
 - exec＝sys_shells 统一入口＋范式适配：PowerShell 下 &&→;、2>nul→2>$null、dir /b→Get-ChildItem -Name，改写即回说明，一次到位免「语法报错再试一轮」。
 - webfetch＝gzip/deflate＋响应头 charset 自适应＋2MB 上限＋HTML 抽正文（as_text 默认 true·省 token 主因）＋瞬时错有限重试（agent.webfetch_retries）。
 - 自检：python -B scripts/tool_kit.py。
+
+## 批27②③ 并行输入与跨会话明细（新增/改动模块）
+
+- [`detail_bus.py`](detail_bus.py)（**新**·core 侧）＝跨会话明细总线：追加式 jsonl `<SMS_HOME>/runtime/details.jsonl`；`publish(sess,conv,kind,text)` 投递、`tail(off)` 按字节偏移增量消费（O(新增字节)·末行未写完不消费）、`recent(n)` 首消费取历史、`label(e)` 出〔sess·kind〕来源标；超 512KB 截尾保 256KB、写失败静默绝不阻断主流程；只依赖 resolve_home（core→shell 反向边仍为 0）。用法 `python -B detail_bus.py tail [n]|status|clear`。
+- [`msg_flow.py`](msg_flow.py)＝`make()` 成为唯一投递口：`BUS`＝tool/skill/edit/sh/step/task/reasoning/err 自动入总线，故网页端/QQ 远程/计划任务/后台/其他壳进程的推导·工具·命令行输出全都汇进主壳；开关 `shell.detail_bus`（`_bus_on()` 缓存）或 env `SMS_DETAIL_BUS=0`。
+- [`chains.py`](chains.py)＝`ACTIVE` 由进程级 dict 改 `_Active()` **线程本地**：主线程＝基值（旧行为逐字不变），其他线程首访从基值 fork 自己副本——并行输入时 A 的 conv 不被 B 覆写，信封归属/任务表 pending/链 member 边各认自己；dict 口径（`[]`、get、update、clear、keys、items、in、`dict(ACTIVE)`）全保留，老调用点零改动。
+- [`stop_channel.py`](stop_channel.py)＝停止旗标按任务隔离：`bind(tid)`＋`request(why, tid)`/`stopped(tid)`/`clear(tid)`/`check()` 只作用该任务；未绑线程且不给 tid＝旧广播语义（run_watch/GUI/readline 等老调用点零改动）；`clear_all()` 全清、`status()` 报广播＋各任务旗标数。
+- [`ask_channel.py`](ask_channel.py)＝按任务分队列＋在等账本 `_OUT`：`ask(q, timeout, t)`、`poll_any()` 返回 (tid, 问题)、`reply(text, tid)`（省略 tid＝按 `_OUT` 最早一条自动路由，故 A 任务的提问不会吃掉 B 任务的输入）、`pending()` 账本、`flush(tid)`；`poll()` 与全局 ASK_Q/ANS_Q 保留（web_shell/QQ 老调用点不变）。
+- [`shell_tui_flow.py`](shell_tui_flow.py)＝并行提交：`_room()`（并行开＝未达 `shell.max_parallel`，0＝无限；并行关＝旧 busy 语义）、`_start(text)` 每输入各起一个 worker（`running{tid}`·起跑先 `stop.clear()` 清广播免被上一轮 stop-all 牵连）、`_work/_done(tid, done)` 收口只清自己旗标并在有空位时续发 `pend`、`_oline(s, tid)` 多任务时给主输出与 F9 行打 `[t1]` 标、`ask_poll` 经 `poll_any` 记住问题所属任务、`bus_poll()` 每 1s 增量合并他会话明细进 `app.details`、`_stop(one)` 支持 `stop <tid>` 只停一个（裸 stop 停全部）。
+- [`shell_tui_detail.py`](shell_tui_detail.py)＝`split(app, s, tag)` 带任务标；`app.details` 上限 60→150（`app.detail_cap`）；F9 头部显示「含其他会话 N 条〔sess·kind〕」。
+- [`shell_console.py`](shell_console.py)＝`:detail bus [n]` 直读跨会话总线、`:detail tail [n]` 优先合并他会话行（异常降级回本地 `shell/detail.json`）。
+- [`shell_core.py`](shell_core.py)＝横幅新增「并行输入：on·≤4 · 跨会话明细：on（他会话推导/工具/命令行输出并入 F9）」；`:detail` 参数直通（tail/bus/clear/status）；BUILD＝b97。
+- 配置（`config/settings.default.json` 的 `shell` 段）＝`shell.parallel`（默认 true·false 退回旧排队）·`shell.max_parallel`（默认 4·0＝无限）·`shell.detail_bus`（默认 true）。
