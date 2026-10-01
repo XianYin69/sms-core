@@ -1,6 +1,6 @@
 # sms-core — SMS 核心（数据流引擎）
 
-skill_manage_system 的核心侧：127 个模块，与界面壳（sms-shell）完全解耦（core→shell 反向依赖＝0）。
+skill_manage_system 的核心侧：128 个模块，与界面壳（sms-shell）完全解耦（core→shell 反向依赖＝0）。
 
 内容：原生大模型网关（gateway/gateway_sse·SOLO 分析后重试）、链记忆十二链（chains/chain_*）、
 任务表与主流程守卫（task_table/flow_guard）、权限与 SOLO 自审（permissions/solo）、技能路由与派发

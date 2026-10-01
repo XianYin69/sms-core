@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """agent_tools.py — 网关大模型可用的 agent 工具核心（SMS 的手和脚·批16 红线：动手必真执行并留账，禁止空口声称已执行）：command(=exec)/read/write/ask/skill/user_send/thinking_chain。每笔调用经 msg_flow 信封上报客户端（技能名＋工具链＋输出＋ts＋conv/sess 归属；on_line 人读行供显示·ev 回调结构化供顶栏进度/审计），task/task_detail 在 agent_task.py、schema 与派发在 agent_dispatch.py。skill＝托管技能真派发（红线17·批23 对等对话）：记 skill_call＋subsession 链→SKILL.md 全文＋用户诉求→嵌套 gateway 工具循环（前缀 ⧉技能▸ 回显）→每次派发自开独立 conv（session 链 open:/close: 入账·右栏对话一览可见）→收口返回整合结果（批7④：正文已经⧉前缀实时显示给用户时返回改 WRAP 首尾片段包装·防调度方整段复读·:dispatch 见 WRAP 打收口行）；派发链深≤2 为防循环熔断（批23 语义调整：这是对等对话间派发链长度保险，非主次层级）；收口＝形式停止非实质完成——〔任务表〕未完行由调度方或监视到它的对话续推。write 守卫：工作区/SMS 默认可写；其余路径需 :grant write；skill 目录需 :grant danger。用法：python -B agent_tools.py（常规经网关工具调用；单跑见 agent_dispatch.py）"""
-import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import resolve_home, chains, msg_flow, skill_route, permissions, solo, agent_ctx as ac
+import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import resolve_home, chains, msg_flow, skill_route, permissions, solo, agent_ctx as ac, tool_kit as tk
 SMS = resolve_home.ensure(); SKROOT = os.path.realpath(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); WRAP = "【派发对话正文·已经⧉前缀实时显示给用户·最终回复禁止复述引用】\n"; _in = lambda p, base: p == _r(base) or p.startswith(_r(base) + os.sep)
 def bind(on_line=None, ev=False):
     c = ac.cur()
@@ -10,10 +10,13 @@ def emit(kind, text, tool="", skill="", ok=None, meta=None):
     c = ac.cur(); e = msg_flow.make(kind, text, conv=c.get("conv") or chains.ACTIVE["conv"], sess=chains.cur_sess(), skill=skill, tool=tool, ok=ok, meta=meta)
     c["ev"] and c["ev"](e); return c["on_line"](msg_flow.brief(e))
 def _r(p): return os.path.realpath(os.path.abspath(os.path.expanduser(str(p))))
-def read(path, max_lines=120):
-    try: t = open(_r(path), encoding="utf-8", errors="replace").read().splitlines()
+def read(path, max_lines=120, offset=0):
+    """流式窗口读（批27）：只缓存 [offset, offset+max_lines) 行，大文件早停不整读；截断即回续读 offset。"""
+    try: txt, total, more = tk.read_window(_r(path), max_lines, offset)
     except Exception as e: return "读失败：" + str(e)[:150]
-    out = "\n".join(t[:max_lines])[:4000]; emit("tool", str(path) + "（%d 行）" % len(t), tool="read", ok=True); return out + ("" if len(t) <= max_lines else "\n…共 %d 行截断" % len(t))
+    n = int(max_lines or 120); off = int(offset or 0)
+    emit("tool", str(path) + ("（共 %d 行·自 %d 起 %d 行）" % (total, off, n) if total else "（大文件早停·自 %d 起 %d 行·总行数未计）" % (off, n)), tool="read", ok=True)
+    return txt + ("" if not more else "\n…（此处截断·续读用 offset=%d，定位内容改用 grep）" % (off + n))
 def write(path, content, append=False):
     p = _r(path)
     if _in(p, SKROOT):
@@ -25,7 +28,13 @@ def write(path, content, append=False):
     os.makedirs(os.path.dirname(p) or ".", exist_ok=True); open(p, "a" if append else "w", encoding="utf-8").write(str(content))
     emit("edit", ("追加 " if append else "写入 ") + p + "（" + str(len(str(content))) + " 字）", tool="write", ok=True); return "已写入 " + p
 def command(cmd):
-    import sys_shells; buf = []; rc = str(sys_shells.run(str(cmd), on_line=buf.append)); out = ("\n".join(str(x).split("▸ ", 1)[-1] for x in buf) or "(无输出)")[:4000]
+    """命令执行（批27 范式适配）：先按目标壳改写已知不兼容语法（PowerShell &&→; ·2>nul→2>$null ·dir /b→Get-ChildItem -Name）
+    并回说明，一次到位免「语法报错再试一轮」；执行仍走 sys_shells 统一入口（门禁/看门狗/stop 语义不变）。"""
+    import sys_shells
+    c0 = str(cmd); kind = sys_shells.kind_for(c0, None); c, notes = tk.adapt(c0, kind)
+    buf = []; rc = str(sys_shells.run(c, on_line=buf.append))
+    out = ("\n".join(str(x).split("▸ ", 1)[-1] for x in buf) or "(无输出)")[:4000]
+    if notes: out = "〔范式适配·%s〕%s\n%s" % (kind, "；".join(notes), out)
     chains.log("tool", "cmd:" + str(cmd)[:60]); emit("tool", "$ " + str(cmd) + "\n" + out, tool="command", ok=rc.startswith("rc=0"), meta={"rc": rc})
     return (("rc≠0 " if not rc.startswith("rc=0") else "") + out)
 def ask(question): import agent_tools2; return agent_tools2.ask_sub(question)

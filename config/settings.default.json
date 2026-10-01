@@ -46,7 +46,8 @@
   "agent": {
     "exec_timeout": 1800,
     "stall_timeout": 300,
-    "comment": "agent CLI 子进程（sms-shell 数据流回退执行器·agent_stream.py）的阻塞应对阈值：T3＝exec_timeout 总预算（到点 kill_tree 整棵树收口），T2＝stall_timeout 静默（连续无新输出行·且 proc_guard 归因非 computing 闷头算）即判卡死收口；半阈先预警；末行像交互提示（y/n/密码/input(）＝非交互壳等不到输入，宽限 8s 即收口点名；刷屏≥400 行/秒＝疑似死循环提前收口。旧版此处是裸 readline 循环＝最恶劣阻塞：CLI 卡住时本壳永久拿不回控制权、任务表无人续推（2026-10-01 表 001-161413-507 t4）"
+    "comment": "agent CLI 子进程（sms-shell 数据流回退执行器·agent_stream.py）的阻塞应对阈值：T3＝exec_timeout 总预算（到点 kill_tree 整棵树收口），T2＝stall_timeout 静默（连续无新输出行·且 proc_guard 归因非 computing 闷头算）即判卡死收口；半阈先预警；末行像交互提示（y/n/密码/input(）＝非交互壳等不到输入，宽限 8s 即收口点名；刷屏≥400 行/秒＝疑似死循环提前收口。旧版此处是裸 readline 循环＝最恶劣阻塞：CLI 卡住时本壳永久拿不回控制权、任务表无人续推（2026-10-01 表 001-161413-507 t4）",
+    "webfetch_retries": 2
   },
   "qq": {
     "handle_stall": 240,

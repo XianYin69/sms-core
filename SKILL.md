@@ -48,6 +48,12 @@ metadata:
 
 **批27 故障重试治理（analyze-then-retry）**：SOLO 开启时重试次数**无限但有硬条件**——任何阻塞/错误发生后必须先由大模型做根因分析（solo.analyze 单次非流式，只回 decision=retry|fix|abort + reason + action），分析之后才决定是修复（换参数/换路径/换技能/拆步/降级，指令注入主模型 msgs）还是重试（同做法再来）；同一错误签名连续超 solo.max_same_error（默认 5）即强制 abort 转人工——「无限」的边界是有进展；主流程守卫 task.max_continue 熔断同样先分析（solo.continue_gate），判 retry/fix 则带修复指令继续、判 abort 才收口。solo.analyze_retry=false／SOLO 关／后台非交互链路＝回退旧的有限重试（llm_gateway.retries），零回归。
 
+## 壳/核拆分（批27）
+
+- 本仓库＝**合体发行仓**；源码另拆 [XianYin69/sms-core](https://github.com/XianYin69/sms-core)（127 模块·含唯一接缝 [runtime_bind.py](scripts/runtime_bind.py) 与分离审计 [sep_audit.py](scripts/sep_audit.py)）＋ [XianYin69/sms-shell](https://github.com/XianYin69/sms-shell)（30 个 `shell_*.py`＋bin 启动器＋web_page.html）；两仓互不 import 对方源码，运行时把两者覆盖安装到同一 `<SMS_HOME>/skill/scripts/` 即合体（日常使用与部署照旧走本仓）。
+- 唯一接缝＝`runtime_bind.set_runner(fn)`/`set_pending(fn)` 注册回调：core 侧要「把一句话语交壳执行／跑壳侧待办」一律经 `runtime_bind.run()/pending_run()`，不认 `shell_*` 模块名；壳侧 `shell_core`/`shell_lifecycle` 于自身 import 时登记。壳未绑定的降级＝先惰性 import 兜底并回填注册，兜底也失败则 `run()` 回明确错误串「未绑定壳运行器…」（不抛异常，调用方自决改走 `agent_stream.ask`/`gateway.run` 纯核链路）、`pending_run()` 回 None 静默跳过（与「无待办」同义）——绝不静默改行为。
+- 审计 `python -B skill/scripts/sep_audit.py` 口径：shell→core 50 条单向边（壳站在核上·合法）·core→shell 反向边 0·seam→shell 2（契约允许）→ `verdict=SEPARATED`；已接入根入口 [sms.py](../sms.py) 开箱即用与 `doctor` 体检，新增 core→shell 反向 import 会在启动/体检被拦下并报 violations。
+
 ## 红线
 
 - 不得删除 [resistance/](resistance/resistance.md) 约束；SMS 运行时数据与一切缓存文件（`__pycache__`/截图/tmp/日志/用户 config.json）不得写入任何 skill 目录；子 skill 未指定路径的新建目录必须经 [resolve_home.py](scripts/resolve_home.py) 分配到 `<SMS_HOME>/tmp/`，工程任务优先用 [sandbox.py](scripts/sandbox.py) 建 `<SMS_HOME>/tmp/sandbox/<id>`，并向子 skill 暴露该能力；子技能运行完必须回到 SMS；**LLM 主导·脚本辅助（批16·取代旧「SMS 本体不得直接回答用户需求」）＋批17 相信大模型**——纯知识问答/闲聊直答免跑子技能，凡要动手经 dispatch/工具真执行、模型整合作答（[SMS 路由] 打分仅供参考；链经验由模型 chain 工具直读写、脚本不代裁决；决策岔路 debate 自辩＋做梦后台自修＝人多在回路旁、仅高危节点回人在回路确认；无匹配且属新领域→委托 Skill_Generator 创建后执行；仍不可得→明确拒绝并说明，禁止空口声称已执行）。

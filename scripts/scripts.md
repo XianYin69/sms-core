@@ -6,6 +6,8 @@
 - 独立运行的 Python 脚本；文件名小写、中横线分隔；每个 ≤ 50 行；本目录只放平台核心脚本——子技能自有执行体迁入 `sub_skills/<技能>/scripts/`（Skill_Generator 自含格式·经相对胶水回连本目录平台库），此处仅留索引链接。
 - 数据写盘统一经 emit.py 门控：默认预览；`--write` 且会话已授予 write 才落盘。
 
+- **壳/核分离红线（批27）**：core 侧（本目录非 `shell_*` 模块）禁止 `import shell_*`——需要把一句话语交壳执行或跑壳侧待办，一律经唯一接缝 [`runtime_bind.py`](runtime_bind.py)（`set_runner`/`set_pending` 注册、`run()`/`pending_run()` 调用）；边界由 [`sep_audit.py`](sep_audit.py) 审计并接入根入口 `sms.py` 开箱即用与 `doctor` 体检，core→shell 反向边非 0 即拦下报 violations。
+
 ## 当前内容
 
 - [`resolve_home.py`](resolve_home.py)：解析 SMS 固定路径（env SMS_HOME → 用户配置 sms_home → 缓存目录 → 根目录）；`conf()` 读取 `<SMS_HOME>/config/config.json`（首读自动从 skill 模板 config.example.json 播种，用户配置不进 skill 目录）；分配子 skill 未指定路径的新建目录到 `<SMS_HOME>/tmp/`（`temp <rel> [--mkdir]`）；`workspace()` 解析 SMS_WORKSPACE（env→配置→`<SMS_HOME>/workspaces/_virtual`），`wtmp()` 取当前工作区（真实/虚拟）下 `tmp/` 并自动创建（大模型/技能配置恒直读 `<SMS_HOME>/config`，不进工作区）。
@@ -46,6 +48,9 @@
 - [`remove.py`](remove.py)：删除 skill（默认预览；--yes 确认 + --write 且已授予 write 才删；拒删受保护本体）。
 - [`ff_lite.py`](ff_lite.py) / [`tts.py`](tts.py) / [`learn.py`](learn.py) / [`file_ops.py`](../sub_skills/file_ops/scripts/file_ops.py) / [`path_ops.py`](../sub_skills/file_ops/scripts/path_ops.py)：firefox lite 内核（resistance #19）——`ff_lite`＝无头 Firefox（playwright 随包内核，缺则 urllib 回退，绝不自动装依赖）联网 `search`（Bing/DDG lite·失败互投）·`fetch` 取正文·`download` 只落 `<SMS_HOME>/downloads/`·限尺寸·覆盖须 `--force`＋grant danger，动作须 `grant network`、记 tool_call 链；`tts`＝TTS「阿林娜 alina」旧导航/屏幕阅读器式机械女声（Windows SAPI5·SSML 平调·文本本机合成不出网·后端拆至 [`tts_say.py`](tts_say.py)），默认关闭，`:tts on` 后 agent_stream 逐句朗读模型输出（批7③ 朗读门控与显示同真源 msg_flow.visible——思考◌/工具$/技能过程⧉/步骤▸/任务/空行一律不读·⧉技能▸ 剥前缀后正文照读（旧版靠 clean 后前缀猜测·◌ 被剥净即漏读）；2026-09-26 修复：JSON 信封行只读 text、命令/步骤/提示回显不读、markdown/URL 剥净、长段按句切 ≤max_chars 连读、here-string 定界独立成行；无声修复：SSML `<speak>` 补 `xml:lang`——System.Speech 缺 lang 即 SpeakSsml 抛错且旧版 DEVNULL 吞错＝永远无声，现 wait 模式回传失败原因；开关单一真源＝settings tts.enabled〔废弃 shell/tts.state 双源，修复配置开了仍无声〕；语音名按前缀容错匹配＋中文语音回退＋无启用语音明确报错），`say/test/on/off/voices/status`；2026-09-26 叠音/随机延迟修复：后端改常驻 PowerShell worker 单进程串行播报（源 [`tts_worker.ps1`](tts_worker.ps1)·stdin 行协议 JSON 朗读/清队/退出·90s 看门狗·副本缓存 `<SMS_HOME>/shell/` 按 hash 复用·`:tts off` 与 stop 掐断当前朗读·旧版每句 spawn 并行抢说根因废弃）；批25 新输出抢读＋语速封顶：agent_stream 每输入调 `tts.preempt()` 轮次＋1 发 `{op:"c",n}`，worker 播放中前探 stdin（Peek）按轮次丢弃旧轮积压、只读最新轮（免两段/多段输出叠读），`rate`×10＝prosody% 封顶 138≈5.9 字/秒（用户上限 6 字/秒·默认 13.8）；`learn`＝联动十一链与做梦的学习脚本，`from-url`（经 ff_lite 蒸馏网页）/`from-session`/`note` 入 knowledge+logic 链并惰性触发做梦、`recall` 向量+频次检索、`stats`；`file_ops`/`path_ops`＝file_ops 子技能引擎（文件读写/复制/移动/删除/列举 · 路径 resolve/which/glob/tree/temp），写经 grant write·高危经 grant danger·禁触碰 skill 本体目录。
 
+- [`runtime_bind.py`](runtime_bind.py) / [`sep_audit.py`](sep_audit.py)：壳/核拆分（批27·源码分 [sms-core](https://github.com/XianYin69/sms-core) 与 [sms-shell](https://github.com/XianYin69/sms-shell)·运行时覆盖安装到同一 `<SMS_HOME>/skill/scripts/` 即合体）——runtime_bind＝唯一接缝（core 侧禁 import `shell_*`，`set_runner/set_pending` 由壳侧 `shell_core`/`shell_lifecycle` import 时登记，`run(text)` 交话语、`pending_run()` 跑壳侧待办；未绑定先惰性兜底 import，兜底失败回「未绑定壳运行器」错误串或 None，绝不静默改行为）；sep_audit＝按 import 图审计（shell＝`shell_*.py`＋bin，core＝其余，seam＝runtime_bind；合格线 core→shell＝0·seam→shell≤2·shell→core 单向合法），回 JSON groups/edges/violations/verdict，非 SEPARATED exit 1；现况 shell→core 50·core→shell 0·seam→shell 2＝SEPARATED。
+
+
 ## 数据契约
 
 见 [`../schemas/`](../schemas/register.schema.json)：register / interfaces / connections / session / chains / task / process / scheduler / memory / trust / error / locality / debate / commands / sandbox / privacy / deps / user_commands / settings schema。
@@ -55,3 +60,10 @@
 1. 使用项目默认 Python，并以 `python -B`（PYTHONDONTWRITEBYTECODE）运行，避免字节码缓存写入 skill 目录；数据写盘统一经 emit.py：默认预览，`--write` 且已授予 write 才落盘。
 2. 先 `session.py --write` 建会话，再 `permissions.py grant write --write` 授权，之后写盘才生效。
 3. 运行前先看 [`../resistance/resistance.md`](../resistance/resistance.md) 确认权限；初始化与 git 提交前必跑 `redlines.py check`（失败禁止继续，高危须 `grant danger`，红线 16）。
+
+## 工具执行范式（批27·tool_kit.py）
+- read＝流式窗口读（path[,max_lines,offset]，>2MB 取满窗口即早停）；先 grep 定位再按 offset 续读，禁止整读大文件。
+- grep＝剪枝 .git/__pycache__/node_modules/隐藏目录＋跳二进制与 >8MB＋逐行流式＋命中即止；glob＝生成器早停（limit 默认 200）。
+- exec＝sys_shells 统一入口＋范式适配：PowerShell 下 &&→;、2>nul→2>$null、dir /b→Get-ChildItem -Name，改写即回说明，一次到位免「语法报错再试一轮」。
+- webfetch＝gzip/deflate＋响应头 charset 自适应＋2MB 上限＋HTML 抽正文（as_text 默认 true·省 token 主因）＋瞬时错有限重试（agent.webfetch_retries）。
+- 自检：python -B scripts/tool_kit.py。
