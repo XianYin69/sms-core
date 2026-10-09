@@ -25,3 +25,6 @@ sms.cmd
 skill/scripts/shell_*
 skill/scripts/*.bak*
 bin/*
+# 批38：图形壳（壳层）回归测试真源在 SMS-shell 仓，核仓不跟踪
+bin/tmp/
+tests/test_shell_qt*.py
