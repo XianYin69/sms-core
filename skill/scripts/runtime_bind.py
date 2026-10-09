@@ -51,7 +51,7 @@ def lifecycle_request(action, why=""):
 def lifecycle_kill_services(why="", exclude=(), budget=1.5, others=False):
     """回收壳拉起的后台服务（DETACHED 子进程不随本进程死）：回被回收 pid 列表；
     未绑定壳/异常＝回 None（＝无服务可回收，与调用方原 try-except 吞异常同义，不改行为）。
-    批30 others=True＝再回收「其它壳＋命令行含 skill_manage_system 的 core 后台」（lc.kill_others），
+    批30 others=True＝再回收「其它壳＋命令行含 smsystem-suit 的 core 后台」（lc.kill_others），
     回 (服务 pids, 其它 pids)——关闭/重启必须把整台 SMS 收干净，close_guard._bye 用此参数。"""
     lc = _lifecycle()
     if not lc: return None

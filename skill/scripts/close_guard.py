@@ -5,7 +5,7 @@
 ② 终端 Ctrl+C／Ctrl+Break——同上（Textual 里 ctrl+c 被壳接管，走 TUI 的 confirm 动作；readline 兜底壳走 KeyboardInterrupt 捕获）；
 ③ 大模型侧：agent 用 exec 跑 shell_lifecycle restart 时，请求写进 shell/lifecycle.json，由壳进程在本轮收口时自己执行（spawn 新实例＋杀旧＋os._exit），保证「只保留重启之后的」那一个进程。
 通报＝qq_push 尽力推一句「SMS 关闭中／重启中（原因·时间）」，任何异常吞掉，绝不因通报挡住退出。
-批30：关闭必回收全部 core 后台——_bye 经接缝 reclaim（服务＋其它壳＋含 skill_manage_system 的后台），
+批30：关闭必回收全部 core 后台——_bye 经接缝 reclaim（服务＋其它壳＋含 smsystem-suit 的后台），
 arm 时把本壳 pid 登记进 shells.json（壳侧登记表＝reclaim 的零 PowerShell 主路径）。
 用法：python -B close_guard.py status|test"""
 import os, sys, time, json, threading
@@ -65,7 +65,7 @@ def _msgbox(text, title="SMS 关闭确认"):
     except Exception: return None
 def _bye(why):
     """放行退出前的收尾：链落盘＋远端通报＋回收全部后台（DETACHED 子进程不随本进程死＝旧版「关了个寂寞」）。
-    批30：others=True＝连其它壳与含 skill_manage_system 的 core 后台一起收，收完注销本壳 pid。"""
+    批30：others=True＝连其它壳与含 smsystem-suit 的 core 后台一起收，收完注销本壳 pid。"""
     push("SMS 关闭中（%s）· %s" % (why, time.strftime("%H:%M:%S")))
     rb = _seam()  # 经唯一接缝取壳生命周期能力（core 侧不得出现 shell_* import）
     if rb:

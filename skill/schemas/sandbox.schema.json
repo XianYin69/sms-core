@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "skill_manage_system sandbox",
+  "title": "smsystem-suit sandbox",
   "type": "object",
   "description": "SMS 沙盒状态契约：<SMS_HOME>/tmp/sandbox/<id>/.sms_sandbox.json",
   "properties": {

@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "skill_manage_system important memory list",
+  "title": "smsystem-suit important memory list",
   "type": "object",
   "description": "SMS/memory.json 重要记忆列表契约；记录的 date/path 为按天缓存清理的钉选依据",
   "required": ["updated", "entries"],

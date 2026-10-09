@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "skill_manage_system skill errors",
+  "title": "smsystem-suit skill errors",
   "type": "object",
   "description": "SMS/errors/skill_errors.json 契约：同一(skill,where)合并计数，未解决≥3 建议启用 Skill_Generator self_update",
   "required": ["updated", "entries"],

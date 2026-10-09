@@ -1,4 +1,4 @@
-# skill_manage_system（SMS）— 独立智能体工具
+# smsystem-suit（SMS）— 独立智能体工具
 技能操作系统的**独立智能体工具**（非客户端 skill 包）：以 `sms-shell` 为交互入口、`skill/scripts/` 为引擎，调度电脑上已安装的 agent CLI 与技能生态——批16 起 LLM 主导·脚本辅助：纯知识问答由大模型直答，动手类请求经数据流派给已装 agent / 托管 skill 真执行、整合结果作答（无匹配→委托 Skill_Generator 创建后执行，不可得→明确拒绝）；批17 相信大模型·人在回路旁：链＝省 token 的记忆介质由模型经 chain 工具直读写、收口链（memory/knowledge/time/event）缓冲至对话收口统一落盘、debate 正反双链自辩修正路径、做梦跑分离后台子进程并新增网络漫游拓扑经验入链（仅高危节点回人在回路确认）。工具全部层集中于 `skill/`：skill 身份（SKILL.md/AGENTS.md/agent/ 四格式提示词）、`scripts/` 引擎、`schemas/` 契约、`config/` 模板、`resistance/` 红线、`sub_skills/` 子技能；根目录只留跨 OS 入口（sms.py/sms/sms.cmd）与部署包 `bin/`（sms-shell 统一入口：交互壳＋`api` 格式 API 子命令），工具本体不依赖客户端发现机制。
 
 ## 结构

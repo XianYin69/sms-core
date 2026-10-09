@@ -2,7 +2,7 @@
 """remove.py — 删除 skill：从目标客户端 skills 目录/hub 移除指定技能；默认预览，--write 且已授予 write 才删，需 --yes 确认 + grant danger（高危键，红线 16），拒删受保护本体。"""
 import os, sys, json, shutil
 
-PROTECT = {"skill_manage_system", "Skill_Generator", "skill_executor", "skill_register",
+PROTECT = {"smsystem-suit", "skill_manage_system", "Skill_Generator", "skill_executor", "skill_register",
            "skill_packer", "skill_connector", "skill_scheduler"}
 
 

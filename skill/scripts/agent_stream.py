@@ -19,7 +19,7 @@ def current():
     return next((k for k, v in det.items() if v.get("native")), cur if cur in det else next(iter(det), None))
 def prefix_on(): return _state("skill_prefix", "on") != "off"
 def use(name): _put("current_agent", name); return "切到 agent：" + name + ("" if name in detected() else "（未检出其 CLI——配置 agent_cli {bin,args} 并确保在 PATH）")
-def skill(on): _put("skill_prefix", "on" if on else "off"); return "skill_manage_system 前缀：" + _state("skill_prefix", "on")
+def skill(on): _put("skill_prefix", "on" if on else "off"); return "smsystem-suit 前缀：" + _state("skill_prefix", "on")
 def compose(text, sms=None): return prompt_builder.init(sms or SMS) + "\n\n" + prompt_builder.build(text, sms or SMS)
 def _edge(conv): return [[conv, "ref", 1], [chains.cur_sess(), "member", 1]]
 def _consume(on_line):

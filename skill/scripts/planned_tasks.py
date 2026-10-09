@@ -10,7 +10,7 @@ import resolve_home, atomic_io, settings, chains, session_reg, task_table as tt
 SMS = resolve_home.ensure()
 DIRNAME = "planned_tasks"
 SMS_PLANNED = "planned"   # SMS 自身的计划任务真源目录（<SMS_HOME>/planned·运行时数据不进 skill 目录·红线#2）
-SELF = ("sms", "skill_manage_system")   # SMS 自身＝落盘一律 <SMS_HOME>
+SELF = ("sms", "skill_manage_system", "smsystem-suit")   # SMS 自身＝落盘一律 <SMS_HOME>
 ROOTS = [os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..")),
          os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sub_skills")]
 STATUS = ("pending", "running", "done", "paused", "failed")

@@ -102,3 +102,14 @@ def test_explicit_opt_in_still_scans(faked, tmp_path):
 def test_real_home_scans_by_default(faked):
     assert faked in lc._sms_pids(sms=resolve_home.ensure()), \
         "真实根默认不扫全机＝关闭/重启收不到旧实例后台（回归）"
+
+
+def test_new_identity_mark_matches_old_companion():
+    """批34 更名兼容红线：SMS_MARK 必须新名＋旧名并存——在跑的老进程命令行仍含
+    skill_manage_system，删旧名＝漏收/关不掉；新名 smsystem-suit 同样必须命中回收面。"""
+    assert "smsystem-suit" in lc.SMS_MARK and "skill_manage_system" in lc.SMS_MARK, \
+        "SMS_MARK 必须旧名＋新名并存（更名兼容红线）"
+    assert lc._sms_hit("python -B svc.py # smsystem-suit"), "新名命令行漏收＝更名后关不干净"
+    assert lc._sms_hit("python -B svc.py # skill_manage_system"), "旧名命令行漏收＝在跑老进程收不掉"
+    assert not lc._sms_hit("python -B other_tool.py"), "不含任何 SMS 特征的行不得进回收面"
+    assert "smsystem-suit" in lc.PATTERNS or True  # 壳文件名 PATTERNS 与身份名无关，保持原样

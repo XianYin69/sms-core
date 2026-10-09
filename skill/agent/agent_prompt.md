@@ -1,3 +1,3 @@
-# skill_manage_system
+# smsystem-suit
 
-使用 `skill_manage_system` skill 来完成用户请求.
+使用 `smsystem-suit` skill 来完成用户请求.

@@ -1,4 +1,4 @@
-# AGENTS.md — 入口红线镜像（skill_manage_system）
+# AGENTS.md — 入口红线镜像（smsystem-suit）
 
 代理在此 skill 内的角色红线（正文见 [SKILL.md](SKILL.md) 与 [resistance/resistance.md](resistance/resistance.md)）。
 本文件与两份正文由 [scripts/redlines.py](scripts/redlines.py) `check` 机械断言，关键句缺失即拒绝初始化、拒绝提交。

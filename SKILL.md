@@ -1,5 +1,5 @@
 ---
-name: skill_manage_system
+name: smsystem-suit
 description: >
   技能操作系统（SMS）：读取固定路径注册表，识别用户意图，按日期建会话五元组
   （对话/用户链/逻辑链/技能/权限），五 lane 并发拆分·整合与进程注册、权限门控，
@@ -10,9 +10,9 @@ metadata:
   category: meta
 ---
 
-# skill_manage_system
+# smsystem-suit
 
-使用 `skill_manage_system` skill 来完成用户请求。Agent 工具的技能操作系统：发现 → 打包 → 连接 → 拆分 → 并发调度 → 进程注册 → 权限门控 → 整合。
+使用 `smsystem-suit` skill 来完成用户请求。Agent 工具的技能操作系统：发现 → 打包 → 连接 → 拆分 → 并发调度 → 进程注册 → 权限门控 → 整合。
 
 ## 固定路径 SMS
 
