@@ -10,7 +10,7 @@ def _scan():
     for root, ds, fs in os.walk(ROOT):
         ds[:] = [d for d in ds if d not in (".git", ".kilo", "__pycache__", "tmp", "SMS", "workspaces", "registry", "sessions", "node_modules")]
         for f in sorted(fs):
-            if f.endswith((".md", ".py", ".ps1", ".sh", ".cmd")) or f in ("sms", "sms-shell"): yield os.path.join(root, f)
+            if f.endswith((".md", ".py", ".ps1", ".sh", ".cmd")) or f in ("sms", "sms-shell", "sms-shell-tui", "sms-shell-gui"): yield os.path.join(root, f)
 def _dangling(path):
     bad = []
     for t in re.findall(r"\]\(([^)\s]+)[^)]*\)", open(path, encoding="utf-8").read()):

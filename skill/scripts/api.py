@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""api.py — 格式 API（并入 sms-shell 统一入口）：`sms-shell api formats|detect|show|validate|export ...`（原 sms-api 命令面不变）或壳内 `:api ...`；亦可直跑本脚本。命令：formats（格式族）· detect（本机客户端技能目录）· show <skill>（解析 frontmatter）· validate <skill>（claude 规范断言）· export <skill> --out <dir> [--format claude|claude-code|openai|all]（默认预览，--write 落盘）。<skill>＝SKILL.md 路径或 <SMS_HOME>/registry/register.json 登记的技能 id。"""
+"""api.py — 格式 API（并入 sms-shell 统一入口）：`sms-shell-tui api formats|detect|show|validate|export ...`（图形入口 sms-shell-gui 同径·原 sms-api 命令面不变）或壳内 `:api ...`；亦可直跑本脚本。命令：formats（格式族）· detect（本机客户端技能目录）· show <skill>（解析 frontmatter）· validate <skill>（claude 规范断言）· export <skill> --out <dir> [--format claude|claude-code|openai|all]（默认预览，--write 落盘）。<skill>＝SKILL.md 路径或 <SMS_HOME>/registry/register.json 登记的技能 id。"""
 import os, sys, re, json
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 except Exception: pass
@@ -32,7 +32,7 @@ def main(a):
         home = os.path.expanduser("~"); p = lambda x: x if os.path.isdir(os.path.join(home, x)) else None
         hub = os.path.join(sms_home(), "skills")
         print(json.dumps({"sms_hub": hub if os.path.isdir(hub) else None, "agents": p(".agents/skills"), "cursor": p(".cursor/skills"), "kilocode": p(".kilocode/skills"), "claude": p(".claude/skills"), "codex": p(".codex/skills")}, ensure_ascii=False, indent=2)); return
-    if len(a) < 2: sys.exit("用法: sms-shell api formats|detect|show|validate|export <skill> [--out D] [--format F] [--write]")
+    if len(a) < 2: sys.exit("用法: sms-shell-tui api formats|detect|show|validate|export <skill> [--out D] [--format F] [--write]")
     skill = resolve_skill(a[1]); meta, _ = F.load(skill)
     if cmd == "show": print(json.dumps({"path": skill, "meta": meta}, ensure_ascii=False, indent=2)); return
     if cmd == "validate":

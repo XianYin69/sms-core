@@ -5,7 +5,7 @@ SMS 在 Windows 的系统壳默认 pwsh→powershell 顺序检出（sys_shells.d
 ## 启动形态
 - 交互：`powershell` / `pwsh`；脚本：`pwsh -NoProfile -File a.ps1`。
 - SMS 注入固定参数：`-NoProfile -NonInteractive`（免档案/AutoRun 拖慢·无交互不死等）。
-- 5.1 的 `-File` 会吞裸 `:token` 参数——含冒号参数改 `-Command "& 'x.ps1' @args"`（bin/sms-shell.cmd 同法）。
+- 5.1 的 `-File` 会吞裸 `:token` 参数——含冒号参数改 `-Command "& 'x.ps1' @args"`（bin/sms-shell-tui.cmd / sms-shell-gui.cmd 同法）。
 
 ## 常用 cmdlet
 | 目的 | 命令 |
@@ -36,6 +36,6 @@ SMS 在 Windows 的系统壳默认 pwsh→powershell 顺序检出（sys_shells.d
 - 服务：`Get-Service 名`；启动项诊断 `Get-CimInstance Win32_StartupCommand`。
 
 ## SMS 相关
-- 部署包：`sms-shell.cmd`（双击/cmd）与 `sms-shell`（pwsh 内 `& .\sms-shell`）。
+- 部署包：`sms-shell-tui.cmd`／`sms-shell-gui.cmd`（双击/cmd）与 `sms-shell-tui`／`sms-shell-gui`（pwsh 内 `& .\sms-shell-tui`）。
 - 高危：`rm -r` 级删除、写用户目录＝红线 2——先预览＋`:grant danger`；git 写命令由 sys_shells.GITW 拦截。
 - unix 风格（ls/cat/grep…）默认改道真 Git-Bash；无 bash 时 PowerShell 别名原生可用（`ll` 除外）。

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""deploy.py — 部署＝仅把工具的 bin 统一入口文件（sms-shell(.cmd)＋原生 DOS TUI 七件 ps1（sms_shell/sms_state/sms_chain/sms_dos/sms_gw/sms_gw_http/sms_route·零 python）＋locate.py＋sms_formats.py——格式 API 已并入 sms-shell：`api` 子命令/`:api`）复制到指定路径，绝不整包复制 skill：目标=位置参数目录，或 --Path P [--NewFolder Yes] [--FolderName F]（init 语义，flag 名大小写不敏感、值保真）；同时在 <SMS_HOME>/config/config.json 登记源安装绝对路径（sms_skill），目标处的 ps1/locate.py 按 相邻→SMS_SKILL→sms_skill 三级定位回源，sms-shell 在任意路径直接可用。默认预览，--write 且已授予 write 才执行。"""
+"""deploy.py — 部署＝仅把工具的 bin 双入口文件（sms-shell-tui(.cmd)·sms-shell-gui(.cmd)＋原生 DOS TUI 七件 ps1（sms_shell/sms_state/sms_chain/sms_dos/sms_gw/sms_gw_http/sms_route·零 python）＋locate.py＋sms_formats.py——格式 API 已并入双入口（tui/gui）：`api` 子命令/`:api`）复制到指定路径，绝不整包复制 skill：目标=位置参数目录，或 --Path P [--NewFolder Yes] [--FolderName F]（init 语义，flag 名大小写不敏感、值保真）；同时在 <SMS_HOME>/config/config.json 登记源安装绝对路径（sms_skill），目标处的 ps1/locate.py 按 相邻→SMS_SKILL→sms_skill 三级定位回源，sms-shell-tui/sms-shell-gui 在任意路径直接可用。默认预览，--write 且已授予 write 才执行。"""
 import os, sys, json, shutil
 HERE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BIN = os.path.join(HERE, "bin")

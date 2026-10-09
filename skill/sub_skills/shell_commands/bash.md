@@ -4,7 +4,7 @@ SMS 在 Linux/macOS/Git-Bash 检出 `bash` 后可 `:sh select bash`；unix 命�
 
 ## 启动形态
 - 交互：`bash -i`；脚本：`bash file.sh`；单发：`bash -c '命令'`（SMS run 即用 `-c`）。
-- shebang：`#!/usr/bin/env bash`；bin/sms-shell 为 `#!/bin/sh` POSIX 壳（不依赖 bash 扩展）。
+- shebang：`#!/usr/bin/env bash`；bin/sms-shell-tui·bin/sms-shell-gui 为 `#!/bin/sh` POSIX 壳（不依赖 bash 扩展）。
 - macOS 默认 `/bin/bash` 是 3.2（无关联数组/`&>>`）；brew bash 5 在 `/opt/homebrew/bin/bash`。
 
 ## 严谨模式

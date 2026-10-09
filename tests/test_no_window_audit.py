@@ -28,7 +28,7 @@ def test_whitelist_and_marker_contract():
     assert aud.MARK in open(os.path.join(S, "shell_gui.py"), encoding="utf-8").read(), \
         "GUI 起 TUI 的可见控制台点必须带 # sms-visible 标记"
     assert aud.MARK in open(os.path.join(ROOT, "sms.py"), encoding="utf-8").read(), \
-        "入口交棒 sms-shell 必须带 # sms-visible 标记"
+        "入口交棒 sms-shell-tui/sms-shell-gui 必须带 # sms-visible 标记"
 
 
 def test_hits_detects_bare_call():
