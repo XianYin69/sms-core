@@ -118,3 +118,85 @@ def test_empty_commit_not_failure():
     assert CG._empty("On branch main\nnothing to commit, working tree clean")
     assert not CG._empty("fatal: unable to write index")
     assert "index.lock" in CG.LOCKFAIL
+
+
+class _R:
+    """〔批40 增量〕chains_git._git 假件：按关键词返回预设 rc/stdout/stderr。"""
+
+    def __init__(self, rc=0, out="", err=""):
+        self.returncode, self.stdout, self.stderr = rc, out, err
+
+
+def test_chains_git_empty_staging_after_add(monkeypatch):
+    """并发写者在 status→add 之间取走变更：add 后 diff --cached --quiet rc=0 ⇒ 瞬时瞬路，
+    绝不跑到 commit（旧口径会得 commit rc=1 nothing to commit 计一次失败＝噪声挤掉真告警）。"""
+    seen = []
+
+    def fake(*a):
+        k = " ".join(str(x) for x in a)
+        seen.append(k)
+        if "status" in k:
+            return _R(0, " M a.json\n", "")
+        if "diff --cached" in k:
+            return _R(0, "", "")
+        return _R(0, "", "")
+
+    monkeypatch.setattr(CG, "_git", lambda *a, **k: fake(*a))
+    CG.STREAK["n"] = 0
+    assert CG.commit("并发抢先测试") is False
+    assert not any("commit" in c for c in seen), seen
+    assert CG.STREAK["n"] == 0, CG.STREAK
+
+
+def test_chains_git_lock_backoff_then_success(monkeypatch):
+    """index.lock ＝可重试：等待后单次重试成功，并清零连续失败计数。"""
+    n = {"i": 0}
+
+    def fake(*a):
+        k = " ".join(str(x) for x in a)
+        if "status" in k:
+            return _R(0, " M a.json\n", "")
+        if "diff --cached" in k:
+            return _R(1, "", "")
+        if "commit" in k:
+            n["i"] += 1
+            if n["i"] == 1:
+                return _R(128, "", "fatal: Unable to create 'index.lock': File exists.")
+            return _R(0, "", "")
+        return _R(0, "", "")
+
+    monkeypatch.setattr(CG, "_git", lambda *a, **k: fake(*a))
+    monkeypatch.setattr(CG.time, "sleep", lambda s: None)
+    CG.STREAK["n"] = 0
+    assert CG.commit("锁重试测试") is True
+    assert n["i"] == 2 and CG.STREAK["n"] == 0, (n, CG.STREAK)
+
+
+def test_debug_w_closes_handle_and_sanitizes(tmp_path, monkeypatch):
+    """〔批40 A3〕debug._w 必须关句柄（写完立即可整读）且脏字符不抛穿：
+    旧式 open(p,"a").write(...) 句柄不关＝Windows 共享读 Errno 22，代理项/NUL 直接 UnicodeEncodeError。"""
+    import debug as DBG
+    p = tmp_path / "debug.log"
+    monkeypatch.setattr(DBG, "path", lambda sms=None: str(p))
+    assert DBG._w("bad \x00 nul \ud800 lone " + "z" * 3000, str(tmp_path)) is True
+    raw = p.read_bytes().decode("utf-8", errors="replace")
+    assert raw.count("z") <= 2000, len(raw)
+    assert "nul" in raw
+
+
+def test_debug_w_failure_returns_false(tmp_path, monkeypatch):
+    """通道自身失败（坏路径/锁）⇒ 返回 False 不抛穿登记主流程。"""
+    import builtins
+
+    import debug as DBG
+    p = tmp_path / "debug.log"
+    monkeypatch.setattr(DBG, "path", lambda sms=None: str(p))
+    real = builtins.open
+
+    def boom(f, *a, **k):
+        if str(f).endswith("debug.log"):
+            raise OSError(22, "Invalid argument", str(f))
+        return real(f, *a, **k)
+
+    monkeypatch.setattr(builtins, "open", boom)
+    assert DBG.error("should-not-raise", str(tmp_path)) is False
