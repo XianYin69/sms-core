@@ -78,7 +78,7 @@ def run_skill(name, inp, tag=""):
         out = _attempt()
         if not out and not _rw_closing() and not __import__("stop_channel").stopped():
             import time; time.sleep(2)  # 同参数单次自动重试（10-07 实测 2 例链路静默失败）·仅此一次·禁循环
-            chains.log("sub", "空输出自动重试:" + tl)
+            chains.log("sub", "空输出自动重试:" + tl, cconv)  # 挂本派发 conv，不落父对话
             c["conv"] = cconv; c["streamed"] = False; c["on_line"] = pf
             c["depth"] += 1; c["chain"] = ch + [nm]  # 与首次派发同参数同前缀（body/pf 未变）
             out = _attempt()
