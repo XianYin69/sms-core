@@ -34,4 +34,4 @@ if __name__ == "__main__":
     a = sys.argv[1:]
     if a and a[0] == "debate": print(debate(a[1], [a[i + 1] for i, x in enumerate(a) if x == "--pro"], [a[i + 1] for i, x in enumerate(a) if x == "--con"]))
     elif a and a[0] == "chain": print(chain(*(a[1:3] + a[3:4] + a[4:5])))
-    else: print(__doc__.strip().splitlines()[1][:300])
+    else: print((__doc__.strip().splitlines() or ["用法：python -B agent_tools3.py [子命令]"])[0][:300])

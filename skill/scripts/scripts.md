@@ -43,5 +43,7 @@
 - 配置（`config/settings.default.json` 的 `shell` 段）＝`shell.parallel`（默认 true·false 退回旧排队）·`shell.max_parallel`（默认 4·0＝无限）·`shell.detail_bus`（默认 true）。
 
 ## 静默子进程审计（批30·闪黑框根治）
+- [`usage_ledger.py`](usage_ledger.py)＝费用台账落盘（批41 F1·G2）：网关收口处 `rec(usage,model,skill)` 追加 `<SMS_HOME>/metrics/usage.jsonl`（{t,conv,sess,skill,model,in,out,reason,cache_read,cost,currency}），写失败静默降级绝不断主链路。
+- [`cost_report.py`](cost_report.py)＝费用台账聚合（批41 F1）：`cost_report.py [day|conv|skill|model|tail]`，:cost 经 commands.ROUTE/shell_core 路由；上游无 cost 字段时按 settings model_meta.prices 估算并标 est。
 - [`no_window.py`](no_window.py)＝静默子进程唯一封装：`run/Popen` 合并 CREATE_NO_WINDOW＋STARTUPINFO(SW_HIDE)，`sms_detach=True` 保 DETACHED 自举语义（creationflags 只 OR 不丢）；后台/前台调用点一律经它，杜绝「每执行一条命令闪一个黑窗」与抢前台。
 - [`no_window_audit.py`](no_window_audit.py)＝静态审计（AST 解析，注释里的字样不算命中）：裸 `subprocess.run|Popen|call|check_output|check_call`、`os.system|os.popen`、`from subprocess import run` 别名绕过一律违规；例外＝白名单 `no_window.py`（封装本体）＋行标记 `# sms-visible`（有意可见控制台：GUI 起 TUI、bin 启动器交棒、入口交棒 sms-shell）；`python -B no_window_audit.py` 违规 exit 1，已接入 `sms.py doctor` 与 `tests/test_no_window_audit.py`。

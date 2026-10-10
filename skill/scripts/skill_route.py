@@ -87,4 +87,4 @@ if __name__ == "__main__":
     a = sys.argv[1:] or ["list"]
     if a[0] == "list": print(listtext())
     elif a[0] == "match" and len(a) > 1: sid, inj = route(" ".join(a[1:])); print(json.dumps({"hit": sid, "inject": inj[:220]}, ensure_ascii=False))
-    else: print(__doc__.strip().splitlines()[1]); sys.exit(1)
+    else: print((__doc__.strip().splitlines() or ["用法：python -B skill_route.py [子命令]"])[0]); sys.exit(1)

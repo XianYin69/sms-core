@@ -148,4 +148,4 @@ if __name__ == "__main__":
     print({"overview": lambda: overview(cur),
            "conflicts": lambda: conflicts(cur) or "（无跨会话未完成·各会话任务表均已收口）",
            "hint": lambda: hint(cur) or "（无跨会话未完成事项）"}
-          .get(a[0], lambda: __doc__.strip().splitlines()[1])())
+          .get(a[0], lambda: (__doc__.strip().splitlines() or ["用法：python -B sessions_view.py [子命令]"])[0])())

@@ -26,4 +26,4 @@ def report():
 def reset(): p = _f(); os.makedirs(os.path.dirname(p), exist_ok=True); open(p, "w", encoding="utf-8").write(""); return "已清空 latency 度量"
 if __name__ == "__main__":
     a = sys.argv[1:] or ["report"]
-    print(json.dumps(report(), ensure_ascii=False, indent=1) if a[0] == "report" else (reset() if a[0] == "reset" else __doc__.strip().splitlines()[1][:200]))
+    print(json.dumps(report(), ensure_ascii=False, indent=1) if a[0] == "report" else (reset() if a[0] == "reset" else (__doc__.strip().splitlines() or ["用法：python -B latency.py [子命令]"])[0][:200]))

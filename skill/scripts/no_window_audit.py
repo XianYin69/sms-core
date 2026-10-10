@@ -8,7 +8,12 @@
 · 例外②调用行或其上两行含标记 `# sms-visible`＝有意可见控制台（GUI 起 TUI、入口交棒壳）。
 一切子进程须经 no_window.run/Popen；需脱离父进程仍保 DETACHED 语义者传 sms_detach=True
 （封装内 OR 合并 creationflags，绝不丢原标志）。
-用法：python -B no_window_audit.py [扫描根]；有违规 exit 1（sms.py doctor 已接入）。
+
+批41 F4 扫描面扩展：默认扫 SMS-core 本体仓（doctor 口径不变＝rc=0 才算干净），
+`--skills` 或 settings `no_window.scan_roots`（列表·绝对路径）追加技能安装根——本体静默
+≠技能静默，技能被派发执行时同样弹前台。violations 每条带 root 字段（命中所属根），
+按根汇总 roots＝[{root,scanned,violations,exists}]，白名单规则一字未改。
+用法：python -B no_window_audit.py [扫描根] [--skills] [--json]；有违规 exit 1。
 """
 import ast, json, os, sys
 
@@ -49,8 +54,6 @@ def hits(src, name=""):
                 if not _marked(lines, node.lineno):
                     out.append({"line": node.lineno, "why": "from os import system/popen", "file": name})
     return out
-
-
 def _py_files(root):
     for d, ds, fs in os.walk(root):
         ds[:] = [x for x in ds if x not in PRUNE]
@@ -59,28 +62,70 @@ def _py_files(root):
                 yield os.path.join(d, f)
 
 
-def scan(root):
-    """扫描根 → {"root","scanned","violations","whitelist"}。"""
-    bad = []
-    n = 0
+def scan(root, tag=""):
+    """扫描根 → {"root","tag","scanned","violations","whitelist"}（每条违规带 root）。"""
+    bad, n = [], 0
     for p in _py_files(root):
         n += 1
         try:
             src = open(p, encoding="utf-8").read()
         except Exception as e:
-            bad.append({"line": 0, "why": "读取失败：%s" % str(e)[:80], "file": p})
+            bad.append({"line": 0, "why": "读取失败：%s" % str(e)[:80], "file": p, "root": tag or root})
             continue
-        bad += hits(src, os.path.relpath(p, root))
-    return {"root": root, "scanned": n, "violations": bad,
+        bad += [dict(h, root=tag or root) for h in hits(src, os.path.relpath(p, root))]
+    return {"root": root, "tag": tag, "scanned": n, "violations": bad,
             "whitelist": WHITELIST, "marker": MARK}
 
 
+def skills_root():
+    """技能安装根＝<SMS_HOME>/skills（register.json install_path 同处）。"""
+    try:
+        import resolve_home
+        return os.path.join(resolve_home.ensure(), "skills")
+    except Exception:
+        return ""
+
+
+def extra_roots():
+    """settings no_window.scan_roots（绝对路径列表·缺省无）——扩展口径由配置承载，
+    命令面 `--skills` 只加技能安装根，两者可并存。"""
+    try:
+        import settings
+        v = settings.get("no_window.scan_roots") or []
+        return [str(x) for x in (v if isinstance(v, list) else [v]) if x]
+    except Exception:
+        return []
+
+
+def report(roots):
+    """多根汇总：violations 合计（本体口径＝第一条根）、roots 逐项计数。"""
+    out, per, total = [], [], 0
+    for r in roots:
+        total += r["scanned"]
+        out += r["violations"]
+        per.append({"root": r.get("tag") or r["root"], "exists": os.path.isdir(r["root"]),
+                    "scanned": r["scanned"], "violations": len(r["violations"])})
+    return {"scanned": total, "violations": out, "roots": per,
+            "marker": MARK, "whitelist": WHITELIST}
+
+
 def main():
+    a = [x for x in sys.argv[1:] if x != "--skills"]
     here = os.path.dirname(os.path.abspath(__file__))
-    root = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.dirname(here))
-    r = scan(root)
+    body = os.path.dirname(os.path.dirname(here))            # SMS-core 本体仓
+    roots = [os.path.abspath(a[0]) if a else body]
+    tags = ["core"] if not a else ["arg"]
+    if "--skills" in sys.argv[1:]:
+        sk = skills_root()
+        if sk and os.path.isdir(sk):
+            roots.append(sk); tags.append("skills")
+    roots += [r for r in extra_roots() if os.path.isdir(r) and r not in roots]
+    tags += ["config"] * (len(roots) - len(tags))
+    r = report([scan(p, t) for p, t in zip(roots, tags)])
     print(json.dumps(r, ensure_ascii=False))
-    sys.exit(1 if r["violations"] else 0)
+    # 本体红线不变：core 根有违规即 exit 1；技能根命中＝报告（余量分批修，不阻塞 doctor）
+    core_bad = [v for v in r["violations"] if (v.get("root") or "") not in ("skills", "config")]
+    sys.exit(1 if core_bad else 0)
 
 
 if __name__ == "__main__":

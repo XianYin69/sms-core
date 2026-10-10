@@ -4,6 +4,7 @@ import os, sys, json, time, urllib.request, msg_flow, stop_channel as stop, sett
 import retry_io as rio, runtime_rec as rr
 import urllib.error
 import dsm
+import usage_ledger as ul  # 批41 F1 费用台账落盘
 class _NoRetry(Exception): pass
 SENT = "。！？；!?…"
 def _req(msgs):
@@ -107,6 +108,7 @@ def _dsm_once(msgs, on_line):
         return None, "DSM 空信封（200 无正文·fallback=false）", "err"
     dsm.commit_from_env(env, msgs)
     dsm.clear_broken()
+    ul.rec(m.get("usage"), model=m.get("model"), skill=ul.cur_skill())
     msg["content"] = (msg.get("content") or "").replace("\x00", "").replace("\r", "\n")
     if out == "delta":
         # 逐 seq 增量吐字（契约 §4）：每段先进 ◌ reasoning 信封＝今天流式的口径。
@@ -132,11 +134,12 @@ def _once(msgs, on_line):
         m, note, kind = _dsm_once(msgs, on_line)
         if kind != "legacy": return m, note
     if rf := dsm.legacy_refused(): return None, rf   # openai_compat=false → 拒绝构造 legacy body
-    req, tout = _req(msgs); buf = ""; rbuf = ""; acc = ""; racc = ""; tcs = {}; fr = ""; maxch = max(1000, int(settings.get("llm_gateway.stream_max_chunks", 20000) or 20000)); pl = lambda s: s.strip() and on_line(_rline(s))
+    req, tout = _req(msgs); buf = ""; rbuf = ""; acc = ""; racc = ""; tcs = {}; fr = ""; u = {}; maxch = max(1000, int(settings.get("llm_gateway.stream_max_chunks", 20000) or 20000)); pl = lambda s: s.strip() and on_line(_rline(s))
     try:
         with urllib.request.urlopen(req, timeout=tout) as r:
             if "text/event-stream" not in str(r.headers.get("content-type") or ""):
-                m, note = _msg(json.loads(r.read().decode("utf-8", "replace"))); rc = m.pop("reasoning_content", "") or ""; rc and on_line(_rline(rc)); return m, note
+                d0 = json.loads(r.read().decode("utf-8", "replace")); ul.rec(d0.get("usage"), model=d0.get("model"), skill=ul.cur_skill())
+                m, note = _msg(d0); rc = m.pop("reasoning_content", "") or ""; rc and on_line(_rline(rc)); return m, note
             for _, raw in zip(range(maxch), r):  # 批12 防卡死：慢速无限吐流按 chunk 上限截停（默认 2 万·正常远达不到·F4 llm_gateway.stream_max_chunks）
                 stop.check(); ln = raw.decode("utf-8", "replace").strip()
                 if not ln.startswith("data:"): continue
@@ -145,6 +148,7 @@ def _once(msgs, on_line):
                 try: d = json.loads(p)
                 except Exception: continue
                 ch = (d.get("choices") or [{}])[0]; de = ch.get("delta") or {}; fr = ch.get("finish_reason") or fr
+                u = d.get("usage") or u  # 批41 F1：上游末帧 usage（有则记，无则不影响）
                 dt = de.get("content") or ""; rt = de.get("reasoning_content") or ""
                 acc += dt; racc += rt; buf = _emit(buf + dt, pl); rbuf = _emit(rbuf + rt, pl)
                 for t in de.get("tool_calls") or []:
@@ -158,6 +162,7 @@ def _once(msgs, on_line):
         msg = str(e)[:150] + " " + detail
         raise rio.Retryable(msg) if rio.transient(e) else _NoRetry(msg)
     pl(buf); pl(rbuf)
+    ul.rec(u, model=str(u.get("model") or ""), skill=ul.cur_skill())
     if not acc.strip() and racc.strip(): acc = racc.strip()
     return {"role": "assistant", "content": acc.replace("\x00", "").replace("\r", "\n"), "tool_calls": list(tcs.values()) if tcs else None, "reasoning_content": "", "printed": True}, "finish=" + (fr or "stop")
 def stream(msgs, on_line):

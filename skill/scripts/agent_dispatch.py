@@ -97,4 +97,4 @@ if __name__ == "__main__":
     elif a[0] == "skill" and len(a) > 2: r = at.run_skill(a[1], " ".join(a[2:])); print(("派发对话 " + a[1] + " 已形式收口·控制权回调用方（正文如上·⧉ 前缀·任务表未完行请继续推进或重派）") if r.startswith(at.WRAP) else r)
     elif a[0] == "task" and len(a) > 1: print(atk.task(" ".join(a[1:])))
     elif a[0] == "detail": print(atk.task_detail(a[1] if len(a) > 1 else ""))
-    else: print(__doc__.strip().splitlines()[1][:400])
+    else: print((__doc__.strip().splitlines() or ["用法：python -B agent_dispatch.py [子命令]"])[0][:400])

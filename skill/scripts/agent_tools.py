@@ -77,4 +77,4 @@ def run_skill(name, inp, tag=""):
 def user_send(text): uc = ac.cur().get("conv") or chains.ACTIVE["conv"] or chains.session_id(); chains.record("dialogue", "agent@" + uc + " " + str(text)[:200], [[uc, "ref", 1], [chains.cur_sess(), "member", 1]]); emit("notice", str(text)); return "已送达用户"
 def thinking_chain(frm, to, why):
     fid = chains.record("logic", str(frm) + "→" + str(to) + "：" + str(why)); emit("step", "逻辑链已记 " + str(frm) + "→" + str(to), tool="thinking_chain"); return "已记逻辑链 " + str(fid)
-if __name__ == "__main__": print(__doc__.strip().splitlines()[1][:400])
+if __name__ == "__main__": print((__doc__.strip().splitlines() or ["用法：python -B agent_tools.py [子命令]"])[0][:400])

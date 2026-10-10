@@ -76,7 +76,7 @@ def log(kind, name, conv=""):
     return record("skill_call" if kind == "skill" else "tool_call" if kind == "tool" else "subsession", name + "@" + sid, [[sid, "ref", 1], [cur_sess(), "member", 1]])
 if __name__ == "__main__":
     a = sys.argv[1:]
-    if not a: print(__doc__.strip().splitlines()[1]); sys.exit(1)
+    if not a: print((__doc__.strip().splitlines() or ["用法：python -B chains.py [子命令]"])[0]); sys.exit(1)
     if a[0] == "session": import session_cli; print(session_cli.main(a[1:])); sys.exit(0)  # 单一口径＝session_cli（零模型脚本直达·旧子命令兼容）
     if a[0] == "log" and len(a) >= 3: print(log(a[1], a[2])); sys.exit(0)
     if a[0] == "list": print("\n".join("%s %s %s" % (f["id"], f["chain"], f["text"][:60]) for f in store().all_frags(a[1] if len(a) > 1 else None))); sys.exit(0)
