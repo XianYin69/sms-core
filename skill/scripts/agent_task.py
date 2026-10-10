@@ -16,7 +16,7 @@ def _row_fn(doc, subs, lk, cnt, tid, parent):
             st["started_at"] = time.strftime("%Y-%m-%d %H:%M:%S")  # 批33 缺陷C：置 running 即记行级时间戳
         try: st["result"] = str(at.run_skill(sk, st["goal"], tag=st["inst"]) if sk else at.ask(st["goal"]))[:600]; st["status"] = "done"
         except stop.Stopped: st["result"] = "用户停止（stop）——子任务在检查点收口"; st["status"] = "stopped"
-        except Exception as e: st["result"] = "执行失败：" + str(e)[:180]; st["status"] = "error"; __import__("skill_errors").record(SMS, sk or "gateway", "task_subtask", str(e)[:200], True)
+        except Exception as e: st["result"] = "执行失败：" + str(e)[:180]; st["status"] = "error"; __import__("skill_errors").record(SMS, sk or "gateway", "task_subtask", __import__("skill_errors").describe(e), True)
         with lk: dn = sum(1 for x in subs if x["status"] == "done"); _save(doc)
         at.emit("task", "任务 " + tid + " 进度 " + str(dn) + "/" + str(len(subs)) + "（" + st["inst"] + " " + st["goal"][:30] + (" " + st["status"] if st["status"] != "done" else "") + "）", tool="task_detail", meta={"id": tid, "done": dn, "total": len(subs), "eta_s": tt.eta(doc)})
         return st

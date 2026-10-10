@@ -89,7 +89,7 @@ def ask(text, on_line, st=lambda n: None, ev=None):
                 on_line(rw.feedback(_nm, _why, time.time() - _t0, rw.budget("agent"), _buf))
                 sr.flag() and sr.append(text, "（本轮 agent CLI 被阻塞应对收口：" + str(_why)[:120] + "·已收 %d 行·对照任务表未完成行继续）" % len(_buf))
     except stop.Stopped as e: rc = 130; stop.clear(); on_line("⛔ 任务已停止（" + str(e)[:80] + "）——在途输出中断·会话照常收口·停止旗标已复位")
-    except Exception as e: rc = 1; __import__("debug").enabled() and __import__("debug").log("EXC " + __import__("debug").tb()[-800:]); __import__("skill_errors").record(SMS, str(ag), "ask", str(e)[:200], True); on_line("数据流异常（会话照常收口·任务表保留·下轮按接续与任务表续跑）：" + str(e)[:160]); sr.flag() and sr.append(text, "（本轮异常中断：" + str(e)[:100] + "·对照任务表未完成行继续）")
+    except Exception as e: rc = 1; __import__("debug").enabled() and __import__("debug").log("EXC " + __import__("debug").tb()[-800:]); __import__("skill_errors").record(SMS, str(ag), "ask", __import__("skill_errors").describe(e), True); on_line("数据流异常（会话照常收口·任务表保留·下轮按接续与任务表续跑）：" + str(e)[:160]); sr.flag() and sr.append(text, "（本轮异常中断：" + str(e)[:100] + "·对照任务表未完成行继续）")
     finally:
         # 批32 R1/R5：正常／异常／用户 stop 每条退出路径都在此收口——先落盘（任务表对账·会话关闭链·工作区释放），
         # 再消费登记的 restart/shutdown（旧版包在 try/except pass 里＝异常静默吞，且无执行器早退路径不经过）。

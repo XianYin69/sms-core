@@ -17,10 +17,20 @@ def off(sms=None):
     except OSError: pass
     return "调试模式：关（日志保留于 " + path(sms) + "）"
 def _w(s, sms, tag=""):
-    p = path(sms); os.makedirs(os.path.dirname(p), exist_ok=True)
-    if os.path.exists(p) and os.path.getsize(p) > 524288:
-        open(p, "wb").write(open(p, "rb").read()[-262144:])
-    open(p, "a", encoding="utf-8").write(time.strftime("[%m-%d %H:%M:%S] ") + tag + str(s).replace("\n", " ⏎ ")[:2000] + "\n")
+    """〔批40 A3〕落盘加固：with 关句柄（旧式 open(...).write 句柄不关＝Windows 共享读必 Errno 22）、
+    errors="replace"＋剥 NUL（不可表字符不再炸穿通道）、任何失败静默返回 False——
+    debug.error 是 skill_errors 的下游，通道自身绝不把异常抛回登记主流程。"""
+    try:
+        p = path(sms); os.makedirs(os.path.dirname(p), exist_ok=True)
+        if os.path.exists(p) and os.path.getsize(p) > 524288:
+            with open(p, "rb") as f: tail = f.read()[-262144:]
+            with open(p, "wb") as f: f.write(tail)
+        line = time.strftime("[%m-%d %H:%M:%S] ") + tag + str(s).replace("\n", " ⏎ ").replace("\x00", "")[:2000] + "\n"
+        with open(p, "a", encoding="utf-8", errors="replace", newline="\n") as f:
+            f.write(line)
+        return True
+    except Exception:
+        return False
 def log(s, sms=None): return _w(s, sms) if enabled(sms) else None
 def error(s, sms=None): return _w(s, sms, "[ERR] ")  # 错误记录通道：恒落 debug.log（skill_errors 每笔直调，做梦自修取错误现场）
 def tb():

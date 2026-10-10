@@ -68,7 +68,7 @@ def run_skill(name, inp, tag=""):
     of = c["on_line"]; c["streamed"] = False; pf = lambda x, _n=tl: (str(x).strip() and c.__setitem__("streamed", True), of(("⧉" + _n + "▸ ") + str(x)));     c["on_line"] = pf; c["depth"] += 1; ch = c["chain"]; c["chain"] = ch + [nm]
     try: out = latency.wrap("skill", tl, gateway.run, body, pf, max_rounds=int(__import__("settings").get("caps.skill_rounds", 0))) or ""  # 0＝无限（防任务断裂）·>0 强制收口
     except Exception as e:
-        if not _rw_close(e): import skill_errors; skill_errors.record(SMS, tl, "run_skill", str(e)[:200], True)
+        if not _rw_close(e): import skill_errors; skill_errors.record(SMS, tl, "run_skill", skill_errors.describe(e), True)
         raise
     finally: c["on_line"] = of; c["depth"] -= 1; c["chain"] = ch; c["conv"] = ""; chains.record("session", "close:" + cconv, ce)
     if not out and not _rw_closing(): import skill_errors; skill_errors.record(SMS, tl, "run_skill_empty", "派发对话无输出（网关空响应或全程工具轮）", True)

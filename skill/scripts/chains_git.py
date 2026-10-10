@@ -54,13 +54,37 @@ def _alarm(msg):
     try:
         import chain_error; chain_error.hook("shell", "chains_git.commit", msg[:200])
     except Exception: pass
+EMPTY = ("nothing to commit", "working tree clean")
+def _empty(err):
+    """〔批40 A2〕并发写者抢先提交＝rc=1 nothing to commit，属正常空转不是失败：
+    实测 10-10 err:shell:chains_git.commit ×10 里半数被记成失败（噪声吃掉真告警）。"""
+    return any(k in (err or "") for k in EMPTY)
 def commit(why):
     st = _git("status", "--porcelain")
     if st is None or not st.stdout.strip(): return False
     _git("add", "-A")
+    # 〔批40 A2〕status 与 add 之间并发写者可能把变更全取走：add 后实测定暂存区，
+    # 空＝按空转短路（rc=1 nothing to commit 不再计一次失败，噪声不挤掉真告警）
+    d = _git("diff", "--cached", "--quiet")
+    if d is not None and d.returncode == 0:
+        STREAK["n"] = 0
+        try: import debug; debug.enabled() and debug.log("chains_git 暂存区空（并发抢先）短路：" + why)
+        except Exception: pass
+        return False
     r = _git("commit", "-m", "chore(chains): %s归档%d项 %s" % (why, len(st.stdout.splitlines()), strftime("%Y-%m-%dT%H:%M:%S")))
     if r is not None and r.returncode != 0:
         err = ((r.stderr or "") + (r.stdout or ""))[:200]
+        if _empty(err):
+            STREAK["n"] = 0
+            try: import debug; debug.enabled() and debug.log("chains_git 空提交短路（并发抢先）：" + why)
+            except Exception: pass
+            return False
+        if any(k in err for k in LOCKFAIL):
+            # 〔批40 A2〕别人正持锁＝可重试：先等 2s 单次重试，仍失败才走陈旧锁自愈
+            if why != "进程退出": time.sleep(2.0)  # 批40 A2：atexit 兜底不等人，避免拖慢关壳
+            r = _git("commit", "-m", "chore(chains): %s归档%d项 %s" % (why, len(st.stdout.splitlines()), strftime("%Y-%m-%dT%H:%M:%S"))) or r
+            if r is not None and r.returncode == 0: STREAK["n"] = 0; return True
+            err = ((r.stderr or "") + (r.stdout or ""))[:200]
         if any(k in err for k in LOCKFAIL) and _lock_cleanup():
             r2 = _git("commit", "-m", "chore(chains): %s归档%d项 %s" % (why, len(st.stdout.splitlines()), strftime("%Y-%m-%dT%H:%M:%S")))
             if r2 is not None and r2.returncode == 0:
