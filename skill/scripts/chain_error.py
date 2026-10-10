@@ -20,7 +20,8 @@ def find(kind, src, msg):
         if t.startswith(pre) and "[已修]" not in t and m and sig(t[len(pre):])[:60] == m: return f
     return None
 def record(kind, src, msg, edges=None):
-    kind = kind if kind in KINDS else "gate"; src = (str(src) or "unknown").replace(" ", "_")[:60]
+    kind = kind if kind in KINDS else "gate"
+    src = re.sub(r"[:\s]+", "_", str(src or "unknown"))[:60]  # 批39：src 内的冒号会把整句挤成 kind（stats/修复依据全乱）
     if not str(msg).strip(): return None
     if f := find(kind, src, msg): _st().bump(f["id"]); return f["id"]
     e = [[chains.ACTIVE["conv"] or chains.cur_sess(), "ref", 1.0], [chains.cur_sess(), "member", 1.0]] + list(edges or [])
@@ -35,14 +36,32 @@ FAILK = ("失败", "未知工具", "ERR ", "无托管技能", "已禁用")
 def fail(kind, src, r):
     if isinstance(r, str) and any(k in r[:24] for k in FAILK): hook(kind, src, r[:200])
     return r
+def kind_of(text):
+    """err:<kind>:<src> → kind；旧原子（无前缀的自由语句）归 legacy——不冒充 kind，
+    也不再以 "?" 混进 stats（实测 203 条里 116 条无前缀，dream_repair 依据被噪音淹没）。"""
+    t = str(text or "")
+    if not t.startswith("err:"): return "legacy"
+    p = t.split(":")
+    return p[1] if len(p) > 2 and p[1] in KINDS else "legacy"
 def open_frags(kind=None):
     fs = [f for f in _st().all_frags("error") if "[已修]" not in (f.get("text") or "")]
-    return [f for f in fs if f["text"].count(":") > 1 and f["text"].split(":")[1] == kind] if kind else fs
+    return [f for f in fs if kind_of(f["text"]) == kind] if kind else fs
 def tally():
     d = {}
     for f in open_frags():
-        k = f["text"].split(":")[1] if f["text"].count(":") > 1 else "?"; d[k] = d.get(k, 0) + f.get("freq", 1)
+        d[kind_of(f["text"])] = d.get(kind_of(f["text"]), 0) + f.get("freq", 1)
     return d
+def migrate(dry=True):
+    """旧自由语句原子 → 补 err:gate:legacy 前缀（正文原样保留），一次到位让 sig/find 去重生效。"""
+    st = _st(); n = 0
+    for f in st.all_frags("error"):
+        t = f.get("text") or ""
+        if t.startswith("err:"): continue
+        n += 1
+        if dry: continue
+        d = cs._ld(st._p("error", f["id"])); d["text"] = "err:gate:legacy " + t
+        cs._wj(st._p("error", f["id"]), d)
+    return ("预览：待归一旧原子 %d 条（加 --write 生效）" % n) if dry else ("已归一 %d 条" % n)
 def resolve(fid):
     st = _st(); c = st._cof(fid)
     if not c: return "无此错误原子：" + str(fid)
@@ -50,6 +69,8 @@ def resolve(fid):
 def line(f): return "%s f%d %s" % (f["id"], f.get("freq", 1), f["text"][:150])
 if __name__ == "__main__":
     a = sys.argv[1:] or ["stats"]
+    if a[0] == "migrate":
+        print(migrate("--write" not in a)); sys.exit(0)
     print(json.dumps(tally(), ensure_ascii=False) if a[0] == "stats" else resolve(a[1]) if a[0] == "resolve" and len(a) > 1
           else record(a[1], a[2], " ".join(a[3:])) if a[0] == "record" and len(a) > 2
           else "\n".join(line(f) for f in open_frags(a[1] if len(a) > 1 else None)) or "（无未修错误原子）")

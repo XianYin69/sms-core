@@ -30,9 +30,12 @@ def pack(sms, reg):
 
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import resolve_home, register
+    import resolve_home, register, skills_config
     sms = resolve_home.ensure()
-    roots = [a for a in sys.argv[1:] if not a.startswith("--")] or register.DEFAULT_ROOTS
+    # 批39 缺陷D1：旧版扫描根由 register.DEFAULT_ROOTS（=__file__ 派生）取，同一 pack.py
+    # 在不同 cwd/挂载形态下条数 79→11→0；`pack --write` 命中非规范目录即把线上 interfaces.json 清成空表。
+    # 现与 register.py __main__ 同口径：位置参数 → skills_config.roots(sms) → DEFAULT_ROOTS 三级找回。
+    roots = [a for a in sys.argv[1:] if not a.startswith("--")] or skills_config.roots(sms) or register.DEFAULT_ROOTS
     _, reg = register.build(sms, roots)
     out, doc = pack(sms, reg)
     import emit

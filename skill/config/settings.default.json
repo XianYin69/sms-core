@@ -220,5 +220,13 @@
     "analyze_max_tokens": 300,
     "gw_fail_cooldown_sec": 60,
     "gw_fail_cooldown_comment": "gw_fail_cooldown_sec（批34）＝SOLO 自审/故障分析共用的网关失败冷却秒数：一次 401/5xx/连接失败后该秒数内不再发必然失败的请求，直接保守拒绝（审核失败绝不放行）；拿到有效响应即清窗。0＝关掉冷却回到「每次判定都试一把」。旧行为＝网关挂了就每受门禁一次工具调用白烧一次请求＋一条 event 链，25s 级卡顿乘以调用数（实测 401 连发 3 条「提供商访问失败重试」）。"
+  },
+  "route": {
+    "idf": true,
+    "thr": 4,
+    "rare_df": 0.06,
+    "cap": 6,
+    "top": 2,
+    "comment": "技能路由打分（skill_route.py 批39）：idf＝词证据按稀有度加权（false 回旧等权口径·逐字零回归）；thr＝命中阈值；rare_df＝稀有词判定比例（df≤技能数×此比例算稀有，命中词全是人人高频词则不作证据，压「检查/配置」类误召）；cap＝单技能词分封顶；top＝参评前 N 名。改口径走 :config set route.thr 5，勿手改本文件（默认值＝skill/config，运行值＝<SMS_HOME>/config）。"
   }
 }

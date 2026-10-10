@@ -1,5 +1,5 @@
 # scripts（脚本库）
-本目录存放 SMS 的可执行脚本：路径解析、写盘门控、注册、打包、连接、会话、任务、进程、权限、并发调度、记忆与缓存清理、十一链记忆（链数据 git 管理）·提示词压缩·提示词构建器与对话初始化（prompt_builder·批24 引导增强分段与处理协议·批29 索引仅 init④ 注入一次、build 只送 SYS 未覆盖增量）·做梦·各链设置、上下文自动压缩、配置系统（模型参数 config.json 与技能列表 skills.json 分离）与上游模型元数据（Token/上下文/RPM）、加密网页壳与对外端口（PQ 验签）、安装同步与信任链。
+本目录存放 SMS 的可执行脚本：路径解析、写盘门控、注册、打包、连接、会话、任务、进程、权限、并发调度、记忆与缓存清理、十一链记忆（链数据 git 管理）·提示词压缩·提示词构建器与对话初始化（prompt_builder·批24 引导增强分段与处理协议·批29 索引仅 init④ 注入一次、build 只送 SYS 未覆盖增量）·做梦·各链设置、上下文自动压缩、配置系统（模型参数 config.json 与技能列表 skills.json 分离）与上游模型元数据（Token/上下文/RPM）、加密网页壳与对外端口（PQ 验签）、安装同步与信任链。；批39 四指标——精准度＝register 描述 220＋折叠块解析＋附属子技能发现＋name 声明名去重、skill_route 对数 idf＋稀有词门（新配置段 route.{idf,thr,rare_df,cap,top}，idf=false 回旧等权口径零回归）、prompt_builder 索引同构分组且必须列全活跃技能（selftest 新增 f_index_lost）；速度＝chains_git.ensure 不再同步 commit（改防抖后台提交·首建仍当场提交）＋陈旧 index.lock 自愈；异常＝chain_error src 冒号归一＋kind_of 无前缀原子归 legacy＋migrate 子命令、task_table.stale_requeue 改走 chain_error 原子口径；护栏＝emit 空技能清单拒绝覆盖非空真源、pack 扫描根与 register 同口径（skills_config.roots）
 
 ## 应存什么
 - 独立运行的 Python 脚本；文件名小写、中横线分隔；不限行数（50 行红线只约束 markdown）；本目录只放平台核心脚本——子技能自有执行体迁入 `sub_skills/<技能>/scripts/`（Skill_Generator 自含格式·经相对胶水回连本目录平台库），此处仅留索引链接。 · 数据写盘统一经 emit.py 门控：默认预览；`--write` 且会话已授予 write 才落盘。

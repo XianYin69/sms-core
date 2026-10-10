@@ -251,8 +251,15 @@ def stale_requeue(max_min=None):
                 moved.append(str(x["id"])); ages.append(int(age))
             if not moved: continue
             _save(doc); emit(doc, "任务表（running 超时降级重排）")
-            chains.record("error", "stale_requeue " + tid[-14:] + " 行 " + ",".join(moved)
-                          + " running>" + str(int(lim)) + "min 回 pending 移尾")
+            # 批39：走 chain_error.record（err:<kind>:<src> 原子口径＋同签名去重 bump），
+            # 旧版直接 chains.record("error", 自由语句) 绕过前缀，令 stats/migrate 出假 kind
+            try:
+                import chain_error as _ce
+                _ce.record("script", "task_table.stale_requeue",
+                           "stale_requeue " + tid[-14:] + " 行 " + ",".join(moved)
+                           + " running>" + str(int(lim)) + "min 回 pending 移尾")
+            except Exception:
+                chains.record("error", "err:script:task_table.stale_requeue " + tid[-14:] + " 行 " + ",".join(moved))
             chains.record("logic", "stale_requeue 阈值 task.stale_min=" + str(int(lim)) + "·表 "
                           + tid[-14:] + " 行级 started_at 超 " + str(max(ages) // 60)
                           + "min（无该字段才回落表 mtime）")

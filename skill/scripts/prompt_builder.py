@@ -53,9 +53,33 @@ def index(sms=None):
             tail = ip[n:].replace("/", "\\")
             return (tail + "\\" + en) if tail else en
         return os.path.join(ip, en)
-    head = "SKILL.md 索引（id → 路径，命中可 exec 读全文按其流程）" + ("：前缀＝%s（各行＝前缀\\相对路径）" % pre if pre else "：")
-    body = head + "\n" + "\n".join("%s → %s" % (s.get("id"), pth(s)) for s in rows)
-    if len(body) > 2600:  # 截断只保留完整行：半行路径会让模型 exec 到不存在的文件（精准度）
+    head = "SKILL.md 索引（id → SKILL.md 路径，命中可 exec 读全文按其流程）" + ("：前缀＝%s" % pre if pre else "")
+    # 批39 同构分组：路径＝前缀\<相对目录>\<id>\SKILL.md 的技能折叠成一行「目录（n 个）：id、id…」，
+    # 组头把「id→长路径」的重复开销换掉——旧逐行式 79 技能要 2900＋字，2600 硬顶砍掉尾部 25 行＝
+    # 那些技能对模型直接不可见（实测 index 只剩 54 行，派都派不到）。异类（entry 非 SKILL.md／路径不齐）仍逐行。
+    grp = {}; order = []; odd = []
+    for s in rows:
+        sid = str(s.get("id")); ip = str(s.get("install_path", "")); en = str(s.get("entry", "SKILL.md"))
+        rel = ""
+        if pre and ip.startswith(pre) and en == "SKILL.md":
+            tail = ip[n:].replace("/", "\\")
+            if tail.endswith(os.sep + sid) or tail == sid:
+                rel = tail[: -len(sid)].strip("\\") if tail != sid else ""
+                key = rel
+                if key not in grp: grp[key] = []; order.append(key)
+                grp[key].append(sid); continue
+        odd.append("%s → %s" % (sid, pth(s)))
+    lines = []
+    for key in sorted(order, key=lambda k: (-len(grp[k]), k)):
+        ids = grp[key]
+        pat = "前缀" + ("\\" + key if key else "") + "\\<id>\\SKILL.md"
+        if len(ids) == 1:
+            lines.append("%s → %s" % (ids[0], (key + "\\" if key else "") + ids[0]))
+        else:
+            lines.append("%s（%d 个，路径＝此式，直接拼 id）：%s" % (pat, len(ids), "、".join(ids)))
+    body = head + "\n" + "\n".join(lines + odd)
+    cap = 2600 if len(body) <= 3800 else len(body)  # 分组后一般已在顶内；确超（技能暴涨）保完整行截断
+    if len(body) > 2600:
         body = body[:2600].rsplit("\n", 1)[0]
     return body
 def init(sms=None):
@@ -109,11 +133,18 @@ def _selftest():
     if (hit and hit in b) or (hit and hit not in i0):
         bad.append("a_index_not_init_only")
     new_total = len(i0) + len(b)
-    old_total = len(i0) + len(PROTOCOL) + len(PROMPT) + len(ix) + len(b)
-    if len(PROTOCOL) + len(PROMPT) + len(ix) < 2500:
+    # 批39 分组式索引：旧基线＝同一批技能按「逐行 id → 全路径」展开的长度（分组只换表示法，不改信息量）
+    rows = [x for x in _reg(resolve_home.ensure()) if x.get("status", "active") == "active"]
+    perline = sum(len("%s → %s" % (x.get("id"), os.path.join(str(x.get("install_path", "")), str(x.get("entry", "SKILL.md"))))) for x in rows)
+    old_total = len(i0) + len(PROTOCOL) + len(PROMPT) + min(2600, perline) + len(b)
+    if perline < 2500:
         bad.append("b_old_baseline_invalid")
     if new_total > old_total - 2500:
         bad.append("b_drop_lt_2500")
+    # 新硬要求：索引必须列全活跃技能（旧逐行式 2600 顶把尾部 25 个技能截没＝模型派不到，精准度事故）
+    lost = [str(x.get("id")) for x in rows if str(x.get("id")) not in ix]
+    if lost:
+        bad.append("f_index_lost:%d" % len(lost))
     sys_txt = ""
     try:
         import gateway
