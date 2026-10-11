@@ -37,7 +37,7 @@ def main(a):
     if c == "migrate": return "已补 kind/last_active 字段 %d 条（旧条目一条未删）" % R.migrate()
     if c in ("overview", "conflicts"):
         import sessions_view as sv
-        return sv.overview(R.current()) if c == "overview" else (sv.conflicts(R.current()) or "（无跨会话未完成·各会话任务表均已收口）")
+        return sv.overview(R.current()) if c == "overview" else (sv.conflicts(R.current()) or "（无跨会话未完成·各会话任务总览均已收口）")
     return __doc__.strip().splitlines()[-1]
 if __name__ == "__main__":
     print(main(sys.argv[1:]))

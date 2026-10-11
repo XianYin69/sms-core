@@ -57,7 +57,9 @@
     "conflict_read_write": true,
     "conflict_skill": false,
     "eta_parallel": true,
-    "comment": "任务表（task_table.py 制表器·批12·批14①门控·批18 主流程守卫）：auto_table＝仅复杂任务（拆步≥2且至少一步命中执行性技能）送网关前自动拆步建表（粗分种子·行数无上限·模型首轮据实改表并按步 task_plan 推进）；单步/纯问答/无技能命中多步一律免表直送；auto_continue＝主流程守卫（批18·相信大模型·批23 收口＝形式停止非实质完成）——话语带任务表且仍有未完成行时禁止收口，注入续推提示让模型继续派发/改表（仅调度对话生效·派发对话收口返回后续推）；max_continue＝守卫连续续推上限（0＝无限·防模型反复宣告完成不推进时熔断转人工）；max_parallel＝task 工具并发子任务上限（parallel=false 时改依序串行）；批29 子步骤并行（task_res.py）：batch_parallel＝任务表并发批次内最大并行度（互不冲突的行同批并发·默认 3）；row_timeout＝单行执行超时秒数（0＝不限·到点只标该行 timeout 并弃线程，不拖同批其他行）；conflict_read_write＝同行写＋读同一资源是否判冲突（默认 true 保守串行，false 允许读写并发）；conflict_skill＝同一技能被两行占用是否判冲突（默认 false·agent_task 已给同技能多实例各开独立对等对话）；eta_parallel＝顶栏剩余时间按并发批次「批内最大值」估算（默认 true，false 退回逐行累加旧口径）"
+    "merge_sim": 0.62,
+    "tree_max_depth": 3,
+    "comment": "任务总览（task_table.py＋树引擎 task_tree.py·批12/14/18/22/29/47·批48 树形与自动合并·批49 编号制＝只给任务树下子节点分层编号（1、2、2.1…）·任务不编号·旧平铺表设计废弃（task.tree 开关退役））：auto_table＝复杂任务（拆步≥2且至少一步命中执行技能）送网关前自动拆步；批48 树形＝所有任务都是根任务的延申：表带 parent/root（新表自动认最近一张「目的不同」的在途表为父）、行带 pid（op=add 第3参数＝父行 id 即挂子步骤）；父行＝子步骤的汇总节点（状态自动 rollup·不派工·不计入待办与 ETA），守卫只催叶子行；tree＝树形开关（false 退回旧单表平铺口径）、merge_sim＝同目的自动合并阈值（0~1：建表前命中即并入原总览、op=merge 手动并表，绝不另建同义新表）、tree_max_depth＝子步骤最大层级；并行（同批＝互不冲突·跨任务跨层级一起判）：op=conflict value=all 跨表、value=tree 整棵树，op=run value=tree 一次并发批次跑完整棵树（行标〔发〕＝派发技能对等对话、〔本〕＝本地工具自办，两者同批并行），batch_parallel/row_timeout/conflict_read_write/conflict_skill/eta_parallel 口径不变；auto_continue/max_continue/stale_min＝主流程守卫与陈旧行自愈同旧口径"
   },
   "shell": {
     "exec_timeout": 600,

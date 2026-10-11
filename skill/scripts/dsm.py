@@ -334,7 +334,7 @@ def validate(env):
 
 # ---- 会话/道号锚点（沿用现有获取方式，不自创来源） -------------------------------
 def current_lane(conv=None):
-    """lane＝当前任务表 running 行 id（无则空串）——与 gateway.run 守卫同用 chains.ACTIVE["conv"]。"""
+    """lane＝当前任务总览 running 行 id（无则空串）——与 gateway.run 守卫同用 chains.ACTIVE["conv"]。"""
     c = conv if conv is not None else (chains.ACTIVE.get("conv") or "")
     if not c:
         return ""

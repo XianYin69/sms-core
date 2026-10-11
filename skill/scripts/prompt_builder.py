@@ -10,7 +10,7 @@ import os, sys, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import resolve_home, settings
 SKILL = "smsystem-suit"
-PROTOCOL = "〔处理协议·批24〕内部处理（思考·工具参数·链写入·任务表步骤·草稿）一律用英语、语句精简；给用户的最终输出先以英语处理完成、再译回用户话语所用语言，简短直给。"
+PROTOCOL = "〔处理协议·批24〕内部处理（思考·工具参数·链写入·任务总览步骤·草稿）一律用英语、语句精简；给用户的最终输出先以英语处理完成、再译回用户话语所用语言，简短直给。"
 PROMPT = "你是 smsystem-suit（SMS）数据流中的主导决策者（LLM 主导·脚本辅助）：问答可直答（简短·用户语言）；本机事实先 read/grep/glob/ls/exec 查证、禁编造；动手才用工具——命中托管技能用 skill 派发对等对话（独立 conv·独立链·无主次·互任监视/指导/训诫）按注入 SKILL.md 真执行，收口＝形式停止、由你整合续推；本机脚本 exec 一次运行、禁反复试探、禁空口声称已执行；[SMS 路由·参考] 仅供裁量；既往先 chain recall、有价值即 chain append、岔路用 debate 自辩（仅高危回人确认）；确无可用技能则建议经 Skill_Generator 创建。生成文件只入工作区 tmp\\（env SMS_TMP·壳已自动建）；tmp 产物收编先 ws_release.py diff 预览、当轮同意后 release --yes（须 :grant danger）；模型/技能配置直读 <SMS_HOME>/config、禁复制重建入工作区；SMS 设置/命令据 settings/commands 查证作答。"
 DELTA = ("〔逐轮增量红线·SYS 未覆盖部分〕" + PROTOCOL
          + "；索引位置：SKILL.md 索引见本对话 init④（每对话注入一次·逐轮不再重复），"
@@ -87,7 +87,7 @@ def init(sms=None):
     return "[SMS 对话初始化·引导结构]\n① 技能名：" + SKILL + "\n② " + model_block(sms) + "\n③ 工作区：" + t[: -len(os.sep + "tmp")] + "（生成文件只入 tmp\\＝" + t + "·模型/技能配置直读 " + os.path.join(sms, "config") + "·待审产物可 ws_release diff/release 收编）\n④ " + index(sms)
 PLAN = ("\n⑤ 计划任务（批26）：真源＝各技能目录 planned_tasks 文件夹内 *.json（Skill_Generator 初始化即建该文件夹）＋<SMS_HOME>\\planned_tasks；"
   "用户提出定时/每天/到点/计划任务＝先 ask_user 问清细节（何时·做什么·产物·通知渠道），再 exec 跑 planned_tasks.py add 标题 时间 诉求 [技能] 登记"
-  "（时间＝ISO 时刻｜+分钟｜5 段 cron）；到点由壳内 plan_tick 自动触发：建任务表→挂该任务绑定的 session 链→执行；:plan ls 查看、:plan pause <id> 暂停。")
+  "（时间＝ISO 时刻｜+分钟｜5 段 cron）；到点由壳内 plan_tick 自动触发：建任务总览→挂该任务绑定的 session 链→执行；:plan ls 查看、:plan pause <id> 暂停。")
 BRIEF = "\n⑥ QQ 简洁模式（用户此刻在 QQ 通道看消息）：回复≤200字·要点直给·勿刷屏。"
 def _bp(sms=None): return os.path.join(sms or resolve_home.ensure(), "shell", "qq_brief")
 def sess_kind(sms=None):

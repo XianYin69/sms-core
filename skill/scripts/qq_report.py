@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""qq_report.py — 任务表→QQ 的实时回传（2026-09-29 用户「回传到qq的消息还要有任务表 并且要实时回传进度」）：task_table.emit 是每次改表（plan/status/add/remove/skill）的唯一咽喉，本模块挂在它后面＝进度一落地就回传，不轮询、不改调用方签名；渲染＝标题行「〔任务表 id〕done/total ▓░进度条 约剩Ns」（Ns＝task_table.eta 实测均值）＋逐行「✓done ▶running ·pending ✗error ■stopped」；节流＝签名 sig（表id＋done/total＋当前 running 行）未变则不发（纯改技能/删行不刷屏），变了但距上次推送 < task_gap（默认 8s·官方 30qpm）则把最新快照合并写进 <SMS_HOME>/qq/progress.json 的 pend 只留最后一份（天然去抖），由 flush() 在收口时补发；开关与阈值＝config/qq.json 的 task_push/task_gap（走 qq_cli conf k=v 改）；snapshot() 供 qq_flow.close 与 qq_inbound 把当前表快照附在回给 QQ 的正文末尾——被动回复窗口内走 qq_reply 不占主动 1000 条/天配额，过期自动回落主动推送。与 task_table 互为延迟 import 防循环依赖；任何异常一律吞掉返回 None，绝不断数据流与收口。用法：python -B qq_report.py render|snapshot|flush|test "<文本>"。"""
+"""qq_report.py — 任务总览→QQ 的实时回传（2026-09-29 用户「回传到qq的消息还要有任务总览 并且要实时回传进度」）：task_table.emit 是每次改表（plan/status/add/remove/skill）的唯一咽喉，本模块挂在它后面＝进度一落地就回传，不轮询、不改调用方签名；渲染＝标题行「〔任务总览 id〕done/total ▓░进度条 约剩Ns」（Ns＝task_table.eta 实测均值）＋逐行「✓done ▶running ·pending ✗error ■stopped」；节流＝签名 sig（表id＋done/total＋当前 running 行）未变则不发（纯改技能/删行不刷屏），变了但距上次推送 < task_gap（默认 8s·官方 30qpm）则把最新快照合并写进 <SMS_HOME>/qq/progress.json 的 pend 只留最后一份（天然去抖），由 flush() 在收口时补发；开关与阈值＝config/qq.json 的 task_push/task_gap（走 qq_cli conf k=v 改）；snapshot() 供 qq_flow.close 与 qq_inbound 把当前表快照附在回给 QQ 的正文末尾——被动回复窗口内走 qq_reply 不占主动 1000 条/天配额，过期自动回落主动推送。与 task_table 互为延迟 import 防循环依赖；任何异常一律吞掉返回 None，绝不断数据流与收口。用法：python -B qq_report.py render|snapshot|flush|test "<文本>"。"""
 import os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import qq_push as qp, msg_flow
@@ -9,12 +9,32 @@ def _sp(c): return qp._ld(_pf(c), {}) or {}
 def _dn(s): return sum(1 for x in s if x.get("status") == "done")
 def _sig(d):
     s = d.get("subtasks") or []
-    return "%s|%d/%d|%s" % (str(d.get("id"))[-14:], _dn(s), len(s), next((str(x.get("id")) for x in s if x.get("status") == "running"), ""))
+    lf = _lv(d)
+    run = next((str(x.get("id")) for x in s if x.get("status") == "running"), "")
+    return "%s|%d/%d|%s" % (str(d.get("id"))[-14:], _dn(lf), len(lf) or len(s), run)
+def _lv(d):
+    """叶子步骤集（批48）：父行是子步骤的汇总节点，进度分母用叶子数才与「真在干的活」对齐；
+    树引擎异常退回全部行。"""
+    try:
+        import task_tree as T
+        if T.on(): return T.leaves(d)
+    except Exception: pass  # noqa 退回旧口径
+    return d.get("subtasks") or []
+def _line(d, x):
+    """单行渲染（批48）：QQ 纯文本用缩进表层级（子行比父行深一级）。"""
+    pre, num = "", str(x.get("id"))
+    try:
+        import task_tree as T
+        if T.on(): pre = "  " * max(0, T.depth(d, x) - 1); num = T.label(d, x)
+    except Exception: pass  # noqa
+    return pre + "%s%s %s" % (MARK.get(x.get("status"), "·"), num,
+                             str(x.get("goal"))[:34])
 def render(d):
     import task_table as tt
-    s = d.get("subtasks") or []; n = len(s); dn = _dn(s)
-    head = "〔任务表 %s〕%d/%d %s %s" % (str(d.get("id"))[-14:], dn, n, "▓" * dn + "░" * (n - dn), msg_flow.fmt(tt.eta(d)))
-    return (head + "\n" + "\n".join("%s%s %s" % (MARK.get(x.get("status"), "·"), x.get("id"), str(x.get("goal"))[:38]) for x in s))[:460]
+    s = d.get("subtasks") or []; lf = _lv(d); n = len(lf) or len(s); dn = _dn(lf)
+    bar = "●" * dn + "○" * max(0, n - dn)
+    head = "〔任务总览〕%d/%d %s %s" % (dn, n, bar, msg_flow.fmt(tt.eta(d)))
+    return (head + "\n" + "\n".join(_line(d, x) for x in s))[:460]
 def progress(doc, note=""):
     try:
         c = qp.conf()

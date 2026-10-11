@@ -2,7 +2,7 @@
 """spin_guard.py — 壳自身「空转卡死」哨兵（2026-10-03 用户「解决卡死问题」）。
 
 现场：sess-20261003-133957 的 Textual 壳 pid 14052 单线程 95% CPU 连烧 76 分钟、零输出
-零产物，任务表 134231-131 余 3/5、135023-493 余 7/9 永不推进。机制＝自增强死循环：
+零产物，任务总览 134231-131 余 3/5、135023-493 余 7/9 永不推进。机制＝自增强死循环：
 某轮 worker 未收口 → busy 恒真 → ProgressBar(total=None) 常显 → Textual Bar.auto_refresh
 =1/15 每帧整屏重绘 → RichLog 未设 max_lines、logbuf 无上限（该会话抽帧/OCR 海量输出）
 → 重绘代价爆炸 → UI 消息泵被自己饿死 → 收口消息再也处理不掉 → busy 永不清、条永不藏。
@@ -10,7 +10,7 @@
 空转在监控里隐形；全 scripts 无 faulthandler＝抓不到栈。
 
 本模块补壳自身：① faulthandler 全程开（dump_traceback_later 独立线程，GIL 被死循环攥着
-也能抓栈）；② 活性只认真进展（输出行/产物落盘/任务表行 done），UI 定时器自转不算进展；
+也能抓栈）；② 活性只认真进展（输出行/产物落盘/任务总览行 done），UI 定时器自转不算进展；
 ③ 判自旋即分级：抓栈→藏 #prog 停动画（立刻还核子）→stop_channel 停在轮→仍不止则
 shell_lifecycle.restart 自愈。零焦点侵入：不动前台窗口/不动光标/不激活窗口。
 批29 修（2026-10-03 22:49 取证）：旧 arm() 的 dump_traceback_later(repeat=True)
@@ -61,7 +61,7 @@ def _cpu_ms(pid=0):
         return (_v(kr) + _v(us)) / 10000.0 if ok else -1.0
     except Exception: return -1.0
 def beat(kind="out", tid=""):
-    """壳在「真进展」处调用：输出行 / 产物落盘 / 任务表行 done。UI 定时器自转绝不可调本函数。"""
+    """壳在「真进展」处调用：输出行 / 产物落盘 / 任务总览行 done。UI 定时器自转绝不可调本函数。"""
     ST["beat"] = time.time(); ST["bkind"] = str(kind)[:24]
     if tid: ST["tid"] = str(tid)
     _cancel_dump("progress")   # 进展驱动：真进展一到即撤销待落转栈（UI 定时器自转不走这里）

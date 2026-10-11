@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""qq_stall.py — QQ 来源任务表的「卡住」看门狗（2026-09-29 用户「QQ 发起的会话其任务表因网络问题停滞时，主动推一条 ⚠任务表卡住 到我的 QQ」；同日升级·用户诉求「卡住看门狗分清原因＋不误杀＋带重试计数」：判据不再只看 mtime 停滞就喊「疑似网络中断」，而是先经 stall_class.classify(doc,age,cfg) 分因——busy（phase∈{exec,llm,llm_stream} 且 runtime.ts 在宽限窗内＝shell.exec_timeout / llm_gateway.timeout×(剩余重试+1)，或该表派发仍在跑）与 unknown 一律静默：不告警、不消耗重试、不重发（根治长脚本/长思考被误杀）；network（err_kind/last_err 指向 URLError·超时·断连·5xx·429 或曾 gaveup）/model（4xx 不可重试·网关空返回）/process（runtime.pid 已死＝ctypes OpenProcess 判活不依赖 psutil，或监听器僵尸、壳心跳 shell/alive.json 过期）才推「⚠任务表卡住 <tid尾14> <done>/<total> ▶<行> 已<N>s 无进展｜原因=<网络|模型|进程>｜已重试X次 还剩Y次｜<detail>」，计数取自 runtime_rec 活性记录 <SMS_HOME>/runtime.json{attempt,retries}；nudge()＝真卡住时后台线程向 agent_stream.ask 补投「继续当前任务表未完成行」（只投 src==qq 的表），同表每 stall_repeat 窗口最多一次、记 qq/stall.json 的 nudged 字段；重试用尽（runtime.retries<=0）则推「⚠已暂停：重试用尽」并置 doc["paused"]=原因（task_table._save 落盘）且不再 nudge；去重＝qq/stall.json{tid:{sig,last,nudged}}，同 sig 在 stall_repeat 内不重发（表真挪动→sig 变→可再报）；开关阈值＝config/qq.json 的 stall/stall_after/stall_repeat/stall_tick（qq_cli conf k=v 改，本模块绝不写用户实值）。后台范式照旧：daemon 线程＋节流＋异常全静默，绝不影响数据流。用法：python -B qq_stall.py check|tick|status|nudge <tid>。"""
+"""qq_stall.py — QQ 来源任务总览的「卡住」看门狗（2026-09-29 用户「QQ 发起的会话其任务总览因网络问题停滞时，主动推一条 ⚠任务总览卡住 到我的 QQ」；同日升级·用户诉求「卡住看门狗分清原因＋不误杀＋带重试计数」：判据不再只看 mtime 停滞就喊「疑似网络中断」，而是先经 stall_class.classify(doc,age,cfg) 分因——busy（phase∈{exec,llm,llm_stream} 且 runtime.ts 在宽限窗内＝shell.exec_timeout / llm_gateway.timeout×(剩余重试+1)，或该表派发仍在跑）与 unknown 一律静默：不告警、不消耗重试、不重发（根治长脚本/长思考被误杀）；network（err_kind/last_err 指向 URLError·超时·断连·5xx·429 或曾 gaveup）/model（4xx 不可重试·网关空返回）/process（runtime.pid 已死＝ctypes OpenProcess 判活不依赖 psutil，或监听器僵尸、壳心跳 shell/alive.json 过期）才推「⚠任务总览卡住 <tid尾14> <done>/<total> ▶<行> 已<N>s 无进展｜原因=<网络|模型|进程>｜已重试X次 还剩Y次｜<detail>」，计数取自 runtime_rec 活性记录 <SMS_HOME>/runtime.json{attempt,retries}；nudge()＝真卡住时后台线程向 agent_stream.ask 补投「继续当前任务总览未完成行」（只投 src==qq 的表），同表每 stall_repeat 窗口最多一次、记 qq/stall.json 的 nudged/n_nudge 字段；批47 起 ①补投文案附〔认领表 <尾14>〕令接收 conv 经 task_table.claim 接管原表（不再另建种子表·根治「一次卡住＝一张新表」的滚雪球摸鱼）②补投次数封顶 nudge_max（默认 3·用尽转 paused 不再刷屏）；check() 每轮顺带 task_table.sweep() 清补投残表/空转表；
+重试用尽（runtime.retries<=0）则推「⚠已暂停：重试用尽」并置 doc["paused"]=原因（task_table._save 落盘）且不再 nudge；去重＝qq/stall.json{tid:{sig,last,nudged}}，同 sig 在 stall_repeat 内不重发（表真挪动→sig 变→可再报）；开关阈值＝config/qq.json 的 stall/stall_after/stall_repeat/stall_tick（qq_cli conf k=v 改，本模块绝不写用户实值）。后台范式照旧：daemon 线程＋节流＋异常全静默，绝不影响数据流。用法：python -B qq_stall.py check|tick|status|nudge <tid>。"""
 import os, sys, time, json, threading
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import resolve_home, qq_push as qp, runtime_rec as rr, stall_class as sc, atomic_io as ai
@@ -16,7 +17,7 @@ def src(conv="", sms=None):
     try: return "qq" if time.time() - float((qp._ld(qp._f(sms or resolve_home.ensure(), "active.json"), {}) or {}).get("ts") or 0) < 1800 else "shell"
     except Exception: return "shell"
 def _sid(doc, sms=None):
-    """该任务表所属 session＝doc["sess"]，缺失按 conv 反查（异常回空·绝不抛）。"""
+    """该任务总览所属 session＝doc["sess"]，缺失按 conv 反查（异常回空·绝不抛）。"""
     try:
         import session_reg as R; m = R.list_(sms)
         sid = str(doc.get("sess") or "")
@@ -70,12 +71,12 @@ def stalled(sms=None, c=None):
         if age > after: out.append((doc, _stat(subs), age))
     return out
 def _text(doc, st, age, kind, detail, rt):
-    """告警文本（用户口径）：⚠任务表卡住 <tid尾14> <done>/<total> ▶<行> 已<N>s 无进展｜原因=…｜已重试X次 还剩Y次｜<detail>。"""
+    """告警文本（用户口径）：⚠任务总览卡住 <tid尾14> <done>/<total> ▶<行> 已<N>s 无进展｜原因=…｜已重试X次 还剩Y次｜<detail>。"""
     dn, tot, run = st; att = _i(rt.get("attempt")); ret = _i(rt.get("retries"))
-    return "\u26a0任务表卡住 %s %d/%d %s 已 %ds 无进展｜原因=%s｜已重试%d次 还剩%d次｜%s" % (
+    return "\u26a0任务总览卡住 %s %d/%d %s 已 %ds 无进展｜原因=%s｜已重试%d次 还剩%d次｜%s" % (
         str(doc.get("id") or "")[-14:], dn, tot, ("\u25b6" + run) if run else "\u25bd", age, KIND.get(kind, kind), att, ret, str(detail)[:90])
 def nudge(doc, c=None, box=None):
-    """真卡住补投：后台线程向 agent_stream.ask 投「继续当前任务表未完成行」（仅 src==qq 表·同表每 stall_repeat 最多一次·异常静默）。"""
+    """真卡住补投：后台线程向 agent_stream.ask 投「继续当前任务总览未完成行」（仅 src==qq 表·同表每 stall_repeat 最多一次·异常静默）。"""
     try:
         c = c or qp.conf(); tid = str(doc.get("id") or "")
         if not tid or doc.get("src") != "qq": return None
@@ -85,9 +86,23 @@ def nudge(doc, c=None, box=None):
         if time.time() - float(v.get("nudged") or 0) < float(c.get("stall_repeat", 600)): return "nudge 节流"
         subs = doc.get("subtasks") or []; pend = [x for x in subs if x.get("status") in ("pending", "running")]
         if not pend: return None
+        # 批47 摸鱼根治①：补投次数封顶（config/qq.json nudge_max 默认 3·0＝不限）——旧版无上限：表推不完
+        # 就每 stall_repeat 投一次，每次 agent_stream.ask 开新 conv、旧版 attach 又把补投原文再粗分建一张新表，
+        # 于是滚出一串同义补投表（实测 10-11 08:00/08:08/08:19 三张·intent 全是补投文本）。超限＝推
+        # 「⚠已暂停：补投上限」并置 doc["paused"]，此后该表不再补投（转人工/模型改表）。
+        n = int(v.get("n_nudge") or 0)
+        cap = _i(c.get("nudge_max", 3))
+        if cap > 0 and n >= cap:
+            st[tid] = dict(v, n_nudge=n)
+            if box is None: qp._wj(qp._f(c["sms"], "stall.json"), st)
+            return _pause(doc, "补投上限 %d 次（qq.nudge_max）·请人工改表或收口" % cap, c)
         rows = "、".join("%s:%s" % (x.get("id"), x.get("goal") or x.get("target") or x.get("intent") or "") for x in pend[:6])
-        msg = "继续当前任务表未完成行（看门狗补投·表 %s）：%s" % (tid[-14:], rows)
-        v["nudged"] = time.time(); st[tid] = v
+        # 批47 摸鱼根治②：补投文案自带「认领原表·禁止另建新表」段——接收侧（任意新 conv）据此走
+        # task_table.claim(表尾号) 接管原表续推；表尾号 14 位＝认领键，格式勿改（task_table.RESUME 同口径）。
+        msg = ("继续当前任务总览未完成行（看门狗补投·表 %s）：%s\n"
+               "〔认领表 %s〕先 task_plan op=claim value=%s 接管该原表并逐行推进；禁止为本消息另建新任务总览；"
+               "原表若已无未完成行则直答回报、免表。" % (tid[-14:], rows, tid[-14:], tid[-14:]))
+        v["nudged"] = time.time(); v["n_nudge"] = n + 1; st[tid] = v
         if box is None: qp._wj(qp._f(c["sms"], "stall.json"), st)
         def _go():
             try:
@@ -110,6 +125,12 @@ def check(sms=None, c=None):
     try:
         c = dict(c or qp.conf(sms)); c.setdefault("sms", sms or resolve_home.ensure())
         if not c.get("stall", True) or not qp.ready(c): return []
+        # 批47 摸鱼根治③：每轮巡检顺带清幽灵表——intent 本身是补投文本、或全部行皆垃圾（noop/纯表号）且
+        # 静默 ≥task.sweep_min（默认 20min）的在途表，逐行 stopped 落 archive，顶栏/接续/本看门狗从此看不到它。
+        try:
+            import settings as _s, task_table as _tt
+            _tt.sweep(_s.get("task.sweep_min", 20))
+        except Exception: pass  # noqa 清理失败绝不拦巡检主路
         st = qp._ld(qp._f(c["sms"], "stall.json"), {}) or {}; rt = _rt(c); hits = []
         for doc, stat, age in stalled(c["sms"], c):
             kind, detail = sc.classify(doc, age, c, rt)
@@ -122,7 +143,9 @@ def check(sms=None, c=None):
             else:
                 t = _text(doc, stat, age, kind, detail, rt); qp.push(t, "QQ·卡住", c); nudge(doc, c, st)
             if t: hits.append(t); _state(doc, "stalled", c["sms"])
-            st[tid] = {"sig": sig, "last": time.time(), "nudged": float((st.get(tid) or {}).get("nudged") or 0)}
+            sv = st.get(tid) or {}
+            st[tid] = {"sig": sig, "last": time.time(), "nudged": float(sv.get("nudged") or 0),
+                       "n_nudge": int(sv.get("n_nudge") or 0)}
         qp._wj(qp._f(c["sms"], "stall.json"), st); _sync(c); return hits
     except Exception: return []
 def tick(sms=None):

@@ -10,7 +10,7 @@
   "v": {"type": "integer", "const": 1, "description": "协议版本。协商用，替代 OpenAI 的 object 字段。"},
   "sid": {"type": "string", "description": "SMS session id（= chains ACTIVE 的 sess）。会话态与并发 lane 的归属根。内部专用，不出网。"},
   "cid": {"type": "string", "description": "conv id（= chains ACTIVE 的 conv）。链归属与费用归因的最小单位。内部专用。"},
-  "lane": {"type": "string", "description": "并发道号（任务表行 t1..tN / 子技能 conv）。注意：与工具参数 task.lane / task_plan.lane 同名，靠位置区分（顶层=协议面，parameters.properties=内容面）。内部专用。"},
+  "lane": {"type": "string", "description": "并发道号（任务总览行 t1..tN / 子技能 conv）。注意：与工具参数 task.lane / task_plan.lane 同名，靠位置区分（顶层=协议面，parameters.properties=内容面）。内部专用。"},
   "dep": {"type": "array", "items": {"type": "string"}, "description": "本 lane 的前置 lane 列表。未全部完成则 dispatchable=false，不得进批。内部专用。"},
   "sch": {"type": "string", "pattern": "^sha1:[0-9a-f]{12}$", "description": "system+tools 规范化指纹（sort_keys 后 sha1 前 12 位）。出口按此从本机 SchemaStore 物化全文；指纹缺失=首帧登记请求。取代每轮重传 17760 字节。"},
   "mem": {"type": "array", "items": {"type": "string", "pattern": "^[0-9a-f]{10}$"}, "description": "链碎片 id 的有序引用表（append-only）。出口按 id 字典序物化为记忆块——顺序确定才有字节稳定前缀。12 链：user/memory/logic/time/event/session/skill_call/tool_call/subsession/dialogue/knowledge/error。"},

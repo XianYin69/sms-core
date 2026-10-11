@@ -5,22 +5,40 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import resolve_h
 SMS = resolve_home.ensure()
 def _tf(tid): return os.path.join(SMS, "tasks", tid + ".json")
 def _save(doc): os.makedirs(os.path.join(SMS, "tasks"), exist_ok=True); atomic_io.wjson(_tf(doc["id"]), doc)
-def _row_fn(doc, subs, lk, cnt, tid, parent):
-    """单行执行闭包（task 工具与 task_plan op=run 共用同一真源）：路由→run_skill/ask→写回 result/status→落盘＋进度信封；
-    异常只标该行（error＋skill_errors 台账），用户停止标 stopped——失败隔离由 task_res.run_rows 的批内并发保证。"""
+def _row_fn(doc, subs, lk, cnt, tid, parent, own_ids=None):
+    """单行执行闭包（task 工具与 task_plan op=run 共用同一真源）：路由→run_skill/ask→写行
+    result/status→落盘＋进度信封。异常只标该行（error＋skill_errors 台账），用户停止＝stopped——
+    失败隔离由 task_res.run_rows 的批内并发保证。
+    own_ids 非空（批48 跨树并发派发）＝落盘只覆盖本线程负责的这些行、其余行取磁盘最新值：
+    后台派发线程与模型本地自办行（task_plan status）同轮写同一张总览时不再互相整表覆盖丢更新。"""
     def one(st):
-        ac.adopt(parent); stop.check(); sid, _ = skill_route.route(st["goal"]); sk = (sid or "").split(",")[0] or None
+        ac.adopt(parent); stop.check()
+        sid, _ = skill_route.route(st["goal"]); sk = (sid or "").split(",")[0] or None
         with lk:
             if sk: cnt[sk] = cnt.get(sk, 0) + 1
-            st["skill"] = sk; st["inst"] = (sk + "_" + str(cnt.get(sk, 0))) if sk else st["id"]; st["status"] = "running"
+            st["skill"] = sk
+            st["inst"] = (sk + "_" + str(cnt.get(sk, 0))) if sk else st["id"]
+            st["status"] = "running"
             st["started_at"] = time.strftime("%Y-%m-%d %H:%M:%S")  # 批33 缺陷C：置 running 即记行级时间戳
-        try: st["result"] = str(at.run_skill(sk, st["goal"], tag=st["inst"]) if sk else at.ask(st["goal"]))[:600]; st["status"] = "done"
-        except stop.Stopped: st["result"] = "用户停止（stop）——子任务在检查点收口"; st["status"] = "stopped"
-        except Exception as e: st["result"] = "执行失败：" + str(e)[:180]; st["status"] = "error"; __import__("skill_errors").record(SMS, sk or "gateway", "task_subtask", __import__("skill_errors").describe(e), True)
-        with lk: dn = sum(1 for x in subs if x["status"] == "done"); _save(doc)
-        at.emit("task", "任务 " + tid + " 进度 " + str(dn) + "/" + str(len(subs)) + "（" + st["inst"] + " " + st["goal"][:30] + (" " + st["status"] if st["status"] != "done" else "") + "）", tool="task_detail", meta={"id": tid, "done": dn, "total": len(subs), "eta_s": tt.eta(doc)})
+        try:
+            r = at.run_skill(sk, st["goal"], tag=st["inst"]) if sk else at.ask(st["goal"])
+            st["result"] = str(r)[:600]; st["status"] = "done"
+        except stop.Stopped:
+            st["result"] = "用户停止（stop）——子任务在检查点收口"; st["status"] = "stopped"
+        except Exception as e:
+            st["result"] = "执行失败：" + str(e)[:180]; st["status"] = "error"
+            se = __import__("skill_errors")
+            se.record(SMS, sk or "gateway", "task_subtask", se.describe(e), True)
+        with lk:
+            dn = sum(1 for x in subs if x["status"] == "done")
+            _own_save(doc, own_ids) if own_ids is not None else _save(doc)
+        at.emit("task", "任务 " + str(doc.get("intent") or "")[:16] + " 进度 " + str(dn) + "/" + str(len(subs)) + "："
+                + st["inst"] + " " + st["goal"][:30]
+                + (" " + st["status"] if st["status"] != "done" else "") + "。",
+                tool="task_detail", meta={"id": tid, "done": dn, "total": len(subs), "eta_s": tt.eta(doc)})
         return st
     return one
+
 
 def task(intent, parallel=True, lane="fg"):
     """批26 前台/后台双车道：lane=bg＝本表由后台线程跑完（调用方用 bg() 立即拿句柄），表内行与前台共用同一套 status/进度/顶栏（地位相同）；
@@ -29,7 +47,7 @@ def task(intent, parallel=True, lane="fg"):
     subs = tsk.decompose(str(intent)); tid = "task-" + time.strftime("%Y%m%d-%H%M%S") + "-" + "%03d" % (time.time() * 1000 % 1000)  # 毫秒后缀：同秒连发两任务不再互相覆盖 tasks/<id>.json（实测 task2 撞名 IndexOverwrite）
     doc = {"id": tid, "intent": str(intent), "conv": chains.ACTIVE["conv"], "sess": chains.cur_sess(), "created": time.strftime("%Y-%m-%d %H:%M:%S"), "src": __import__("qq_stall").src(chains.ACTIVE["conv"]), "lane": str(lane or "fg"),
       "subtasks": [(dict(x, lane=str(lane or "fg")) if isinstance(x, dict) else {"id": "t%d" % (i + 1), "goal": str(x), "status": "pending", "lane": str(lane or "fg")}) for i, x in enumerate(subs)]}; _save(doc)
-    at.emit("task", "任务 " + tid + "：拆出 " + str(len(subs)) + " 子任务·" + ("并行派发" if parallel is not False else "依序串行") + "（剩余时间预测见顶栏）", tool="task", meta={"id": tid, "done": 0, "total": len(subs), "eta_s": tt.eta(doc)})
+    at.emit("task", "任务 " + str(doc.get("intent") or "")[:16] + "：拆出 " + str(len(subs)) + " 子任务·" + ("并行派发" if parallel is not False else "依序串行") + "（剩余时间预测见顶栏）", tool="task", meta={"id": tid, "done": 0, "total": len(subs), "eta_s": tt.eta(doc)})
     lk = threading.Lock(); cnt = {}; one = _row_fn(doc, subs, lk, cnt, tid, ac.cur())
     workers = 1 if parallel is False else max(1, min(max(1, int(settings.get("task.max_parallel", 3))), len(subs)))
     out = tr.run_rows(subs, one, limit=workers, timeout=(0 if parallel is False else settings.get("task.row_timeout", 0)), src=tid)
@@ -48,9 +66,95 @@ def run_table(doc, rows=None):
     if not rows: return "无未完成行——本表已清空"
     lk = threading.Lock(); cnt = {}; tid = doc["id"]
     out = tr.run_rows(rows, _row_fn(doc, subs, lk, cnt, tid, ac.cur()), limit=max(1, int(settings.get("task.batch_parallel", 3) or 3)), src=tid)
-    _save(doc); tt.emit(doc, "任务表（并发批次执行）")
+    _save(doc); tt.emit(doc, "任务总览（并发批次执行）")
     return "并发批次执行完成：批 %d 个〔%s〕·成功 %d/%d·失败 %d·超时 %d·墙钟 %ss（剩余预测已按批内最大值）" % (
         len(out["batches"]), "｜".join("+".join(b) for b in out["batches"]), out["done"], len(rows), out["error"], out["timeout"], out["wall_s"])
+
+def subs_of(d):
+    return ((d or {}).get("subtasks") or [])
+
+
+def _own_save(doc, ids):
+    """后台并发批次写盘保护（批48·跨任务并行＋本地处理同轮进行的关键）：
+    只把本线程负责的行（ids）覆盖进磁盘上的最新总览，其余行保持磁盘值——
+    否则「后台派发线程写」与「模型本地自办行 task_plan status 写」会互相整表覆盖丢更新。"""
+    d = tt._load(str(doc.get("id") or "")) or doc
+    by = {str(x.get("id")): x for x in (doc.get("subtasks") or []) if str(x.get("id")) in ids}
+    d["subtasks"] = [by.get(str(x.get("id")), x) or x for x in (d.get("subtasks") or [])]
+    tt._save(d)
+    return d
+
+
+def run_tree(doc, wait=False):
+    """op=run value=tree（批48·多任务多步骤与子步骤并行）：整棵总览（根任务＋全部延申任务）的未完成
+    叶子行按资源互斥组批，**发送处理**行（〔发〕＝有技能命中）交后台线程并发派发对等对话，
+    **本地处理**行（〔本〕＝无技能/目标写 self=）当场列回模型自办——两路同时进行（＝用户要的
+    「并行发送处理和本地处理」）；只动本对话可归属的表（批32 越会话拒写口径不变），他对话表跳过并列出。
+    wait=True（op=run value=tree:wait）＝同步等批次跑完再回（保守口径）。"""
+    docs = []
+    try:
+        docs = tt.T.tree_of(doc) if tt._tree_on() else [doc]
+    except Exception: docs = [doc]
+    mine, skip = [], []
+    for d in docs:
+        (mine if tt._mine(d) else skip).append(d)
+    lk = threading.Lock(); cnt = {}; send, local = [], []
+    fns = {}; own_docs, own_rows = [], []
+    for d in mine:
+        subs = d.get("subtasks") or []
+        fn = _row_fn(d, subs, lk, cnt, d["id"], ac.cur(),
+                 own_ids={str(r.get("id")) for r in subs})
+        for x in tt.open_rows(d):
+            if str(x.get("status")) not in ("pending", "running"): continue
+            if tt.T and tt.T.chan(x) == "send":
+                send.append(x); fns[id(x)] = fn
+                own_docs.append(d); own_rows.append(x)
+            else:
+                local.append(x)
+    if not send and not local:
+        return "整棵树无可执行未完成叶子行" + ("（跳过他对话表 %d 张·:session use 接续）" % len(skip) if skip else "")
+    if not send:
+        return ("本树无可派发（〔发〕）行，%d 行全为本地处理行，请按清单用 exec/read/write 自办%s"
+                % (len(local), "；他对话表 %d 张未代改" % len(skip) if skip else "")) + "\n" + _local_list(local)
+    lim = max(1, int(settings.get("task.batch_parallel", 3) or 3))
+    runner = lambda r: fns[id(r)](r)
+    ids = {str(r.get("id")) for r in send}
+    own = {id(r): d for d, r in zip(own_docs, own_rows)}   # 行→属主表（跨表并发各写各的表）
+    src = str(doc["id"])
+    if wait:
+        out = tr.run_rows(send, runner, limit=lim, src=src)
+        for d in mine:
+            tt._save(d); tt.emit(d, tt.LABEL + "（整棵树并发批次执行·同步）")
+        bt = "+".join("×".join(b) for b in out["batches"])
+        return ("跨表跨层级并发批次完成：树内 %d 张表·本批 %d 行分 %d 批〔%s〕·成功 %d·失败 %d·超时 %d·墙钟 %ss"
+                % (len(mine), len(send), len(out["batches"]), bt,
+                   out["done"], out["error"], out["timeout"], out["wall_s"])
+                + ("；他对话表 %d 张未代改" % len(skip) if skip else "")
+                + ("\n另有本地处理行（同轮自办）：\n" + _local_list(local) if local else ""))
+
+    def _bg_run():
+        try:
+            tr.run_rows(send, runner, limit=lim, src=src,
+                        on_row=lambda r, st: _own_save(
+                            own.get(id(r), doc), {str(r.get("id"))}))
+            for d in mine:
+                tt.emit(d, tt.LABEL + "（整棵树发送处理并发批次收口）")
+        except Exception as e:
+            __import__("chain_error").hook("run_tree", src, repr(e)[:200])
+    th = threading.Thread(target=_bg_run, daemon=True, name="bg-tree")
+    th.start()
+    return ("已并发派发 %d 行（〔发〕·跨 %d 张表·后台线程组批跑·批内≤%d·失败隔离只标该行），"
+            "另有 %d 行是〔本〕本地处理行——请本轮就用 exec/read/write/glob/grep 自办（与派发同时进行，"
+            "进度照常落总览＋顶栏，稍后 task_detail 查）%s\n本地待办清单：\n%s"
+            % (len(send), len(mine), lim, len(local),
+               ("；他对话表 %d 张未代改（:session use 接续）" % len(skip) if skip else ""),
+               _local_list(local) if local else "（无）"))
+
+
+def _local_list(rows):
+    """本地处理行清单（回给模型自办）。"""
+    return "\n".join("〔本〕%s｜%s" % (r.get("id"), str(r.get("goal"))[:70]) for r in rows) or "（无）"
+
 
 def bg(intent, parallel=True):
     """后台车道（并行处理）：另起线程跑 task(lane=bg)，本对话立刻拿句柄继续干别的；进度照常落 tasks/<id>.json＋顶栏。"""
@@ -84,7 +188,7 @@ def bg(intent, parallel=True):
             except Exception: pass
     th = threading.Thread(target=_run, daemon=True, name="bg-task")
     th.start()
-    return "已转后台执行（lane=bg·与前台任务表同一地位·不阻塞本对话）：新建表稍后可用 task_detail 查（清单里 lane=bg 者即后台表）；前台可继续收口，守卫不受后台行阻挡"
+    return "已转后台执行（lane=bg·与前台任务总览同一地位·不阻塞本对话）：新建表稍后可用 task_detail 查（清单里 lane=bg 者即后台表）；前台可继续收口，守卫不受后台行阻挡"
 
 def task_detail(tid=""):
     d = os.path.join(SMS, "tasks"); ids = sorted(x[:-5] for x in (os.listdir(d) if os.path.isdir(d) else []) if x.endswith(".json") and os.path.isfile(os.path.join(d, x)))
@@ -97,7 +201,7 @@ def task_detail(tid=""):
     try: doc = atomic_io.rjson(_tf(tid))
     except Exception: return "无任务：" + tid
     dn = sum(1 for x in doc["subtasks"] if x.get("status") == "done")
-    at.emit("task", "任务 " + tid + " " + str(dn) + "/" + str(len(doc["subtasks"])), tool="task_detail", meta={"id": tid, "done": dn, "total": len(doc["subtasks"]), "eta_s": tt.eta(doc), "subtasks": doc["subtasks"]})
+    at.emit("task", "任务 " + str(doc.get("intent") or "")[:16] + " " + str(dn) + "/" + str(len(doc["subtasks"])), tool="task_detail", meta={"id": tid, "done": dn, "total": len(doc["subtasks"]), "eta_s": tt.eta(doc), "subtasks": doc["subtasks"]})
     return json.dumps({k: doc[k] for k in ("id", "intent", "conv", "sess", "subtasks")}, ensure_ascii=False)[:1500]
 if __name__ == "__main__":
     a = sys.argv[1:]

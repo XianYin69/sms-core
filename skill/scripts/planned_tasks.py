@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """planned_tasks.py — 计划任务读取与调度（SMS 侧真源＝各技能目录 planned_tasks/*.json，由 Skill_Generator 初始化时写入）。
-职责：①scan 扫描全部技能 planned_tasks 文件夹并校验 schema；②next_run 按 at/cron/interval 算下次触发；③due 取到点条目；④fire 到点自动执行＝为该计划任务绑定/复用 session（kind=cron）→ 建任务表（task_table.plan）→ 把任务表与执行记录挂到该 session 关联链（chains.record）→ 交 runner（默认 shell_core.handle，模型会先向用户询问细节再执行）→ 回写 status/last_run/next_run/runs；⑤tick 节流扫描并触发；⑥CLI：ls/validate/add/show/pause/resume/run/tick/serve。
+职责：①scan 扫描全部技能 planned_tasks 文件夹并校验 schema；②next_run 按 at/cron/interval 算下次触发；③due 取到点条目；④fire 到点自动执行＝为该计划任务绑定/复用 session（kind=cron）→ 建任务总览（task_table.plan）→ 把任务总览与执行记录挂到该 session 关联链（chains.record）→ 交 runner（默认 shell_core.handle，模型会先向用户询问细节再执行）→ 回写 status/last_run/next_run/runs；⑤tick 节流扫描并触发；⑥CLI：ls/validate/add/show/pause/resume/run/tick/serve。
 约束（与 Skill_Generator README 一致）：一任务一文件、原子写、status 仅 pending/running/done/paused/failed、时间一律本地 ISO、技能自身不执行计划任务（只有本模块执行）。
 用法：python -B planned_tasks.py ls | validate | add "<标题>" "<时间>" "<诉求>" [技能id] | show <id> | pause <id> | resume <id> | run <id> | tick | serve | selftest"""
 import no_window  # 静默子进程：前台运行任务不弹命令行窗口
@@ -157,7 +157,7 @@ def _save(path, doc): atomic_io.wjson(path, doc)
 def utter(doc, sid=""):
     return ("计划任务到点自动执行〔%s〕《%s》：\n%s\n"
             "要求：①细节不足先用 ask_user 逐项询问用户（范围/产物/通知渠道）；"
-            "②据回答用 task_plan op=plan 建计划任务表并按表推进到全部行 done；"
+            "②据回答用 task_plan op=plan 建计划任务总览并按表推进到全部行 done；"
             "③本任务绑定 session=%s，执行过程与结论挂到该 session 关联链；"
             "④完成后 user_send 一句回报。") % (doc.get("id"), doc.get("title"), doc.get("input"), sid)
 
