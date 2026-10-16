@@ -1,4 +1,4 @@
-﻿---
+---
 name: skill_packer
 description: >
   读取 skill_register 的 register.json，描述每个技能的可用接口与用途，

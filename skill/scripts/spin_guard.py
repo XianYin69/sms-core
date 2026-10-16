@@ -33,6 +33,7 @@ def _cfg(k, d):
     except Exception: return float(d)
 ST = {"beat": time.time(), "bkind": "boot", "app": None, "cpu": 0.0, "silent": 0.0,
       "verdict": "ok", "hits": 0, "armed": False, "hide_req": False, "last_ext": 0.0, "tid": ""}
+_LEGIT = {"longs": None, "mx": 0.0}  # 合法长等待判据缓存：arm 时算一次（LONG_STAGES 集合＋t3 硬上限），热循环只读不落盘
 _FH = {"fh": None, "path": "", "armed": False, "until": 0.0, "fired": 0.0, "susp": False}
 class _FT(ctypes.Structure):
     """FILETIME（lo/hi 两个 DWORD）——进程 CPU 时间戳载体。"""
@@ -174,6 +175,7 @@ def arm(app=None, tick_s=None):
         faulthandler.enable(file=_open_fh(), all_threads=True)   # 致命错误才落栈（极小）
         _cap_log()   # 现场遗留的超大 spin.log 先截尾（旧版墙钟定时器灌出来的）
     except Exception: pass
+    _legit_init()   # 合法长等待判据预算一次：后续热循环零配置 I/O
     threading.Thread(target=_watch, args=(tick_s or _cfg("spin_tick_s", 5.0),), daemon=True, name="spin-guard").start()
     return status()
 def _escalate(s):
@@ -198,6 +200,42 @@ def _escalate(s):
         try:
             import runtime_bind; runtime_bind.lifecycle_request("restart", "spin-selfheal cpu=%.0fms/s silent=%.0fs" % (cpu, sil))
         except Exception: pass
+def _legit_init():
+    """合法长等待判据预计算（arm 时调一次）：LONG_STAGES 集合＋t3 硬上限。
+    看门狗热循环只读这份缓存，绝不每 tick 读配置文件——否则自身 I/O 拖慢巡检，
+    反而检不出自旋（selftest 实测：每 tick 读 settings 致 hits=0）。"""
+    try:
+        import timeout_tiers as tiers
+        _LEGIT["longs"] = set(str(x) for x in tiers.LONG_STAGES)
+        _LEGIT["mx"] = float(tiers.t3_max("qq"))
+    except Exception:
+        _LEGIT["longs"] = {"llm", "llm_stream", "gateway", "skill", "ask", "dispatch_llm", "subconv"}
+        _LEGIT["mx"] = 2700.0
+    if not _LEGIT["mx"] or _LEGIT["mx"] < 60.0:
+        _LEGIT["mx"] = 2700.0
+def _legit_wait():
+    """本进程是否有线程正处在合法长等待（网关 LLM 请求／技能对话）。
+
+    SMSocket 密钥轮询时网关调用长时间阻塞、既无输出也无法 beat()——这是合法等待，
+    不是壳自旋：期间绝不升级处置（藏条/停轮/重启），否则「等密钥」被误判成「卡死」
+    而重启（用户报障：任务进行中＋密钥轮询时有概率触发重启·真正卡死反而不重启）。
+    判据＝任一 run_watch.STAGE 落在 LONG_STAGES 且其活动戳（ACT）距今 < t3 硬上限
+    （合法长等待的合理天花板；超过即疑似真死，调用本应已被 T1/T3 超时收口）。
+    STAGE 按线程存、快照遍历，无跨线程竞争；判据经 _legit_init 预算，热循环零配置 I/O。"""
+    try:
+        longs = _LEGIT["longs"]
+        if not longs:
+            return False
+        import run_watch as rw
+        now = time.time()
+        for tid, st in list((rw.STAGE or {}).items()):
+            if str(st or "").lower() not in longs:
+                continue
+            if now - float(rw.ACT.get(tid, now)) < _LEGIT["mx"]:
+                return True
+    except Exception:
+        pass
+    return False
 def _watch(tick_s):
     prev = _cpu_ms(); pts = time.time(); ext = 0.0
     while True:
@@ -212,6 +250,12 @@ def _watch(tick_s):
         _cap_log()   # 兜底封顶：faulthandler 自己写也受体积约束
         # 一次性定时器已落栈 → 释放标志，持续可疑时冷却期满可再挂
         if _FH["armed"] and now > _FH["until"]: _FH["armed"] = False
+        if _legit_wait():
+            # 合法长等待（网关 LLM／SMSocket 密钥轮询）：静默是预期的——
+            # 绝不判自旋／藏条／停轮／重启，否则「等密钥」被误判成「卡死」而重启（用户报障）。
+            if _FH["armed"]: _cancel_dump("legit-wait")
+            ST["verdict"] = "wait"; ST["hits"] = 0
+            continue
         susp = (rate >= thr_c) or (silent >= thr_s)   # 可疑＝高CPU 或 无进展超阈
         if susp and not _FH["armed"] and now - _FH["fired"] >= _cfg("spin_dump_s", 120):
             _arm_dump(_cfg("spin_dump_s", 120), "susp cpu=%.0f silent=%.0f" % (rate, silent))

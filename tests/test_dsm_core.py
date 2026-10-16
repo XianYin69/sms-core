@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""test_dsm_core.py — DSM v1 sms-core 侧接线验收（契约 §6 的 A/B/G/H ＋ 开关默认不改变行为）。
+"""test_dsm_core.py — DSM v1 sms-core 侧接线验收（契约 §6 的 A/B/G/H ＋ DSM 唯一出站通道）。
 
-零网络：legacy 与 DSM 两条路全部打桩，绝不打真实提供商；链目录指向 tmp（不碰真 chains）。
-A＝dsm off 时请求体逐字节等于今天（golden 冻结旧构造式）；B＝dsm on 信封→响应解码→工具循环形状不变；
+零网络：DSM 路打桩，绝不打真实提供商；native /chat/completions 出站分支已删除
+（统一经 smsocket DSM 协议），「降级」目的地改为显式拒绝＋留痕（红线：绝不静默）。
+A＝dsm off → 显式拒绝（不再构造 native body）；B＝dsm on 信封→响应解码→工具循环形状不变；
 G＝不变量（顶层泄漏/x 往返/mem 确定性/ROLE 双射/validate 封闭表）；
-H＝服务端未装 DSM → 降级 legacy 且留一条 warning（绝不静默）。
+H＝服务端未装 DSM/空信封/冷却期 → 降级标记后显式拒绝 native 并留 warning（绝不静默）。
 """
 import os
 import sys
@@ -96,38 +97,27 @@ def _resp_env(tool=False):
             "egress": "direct"}
 
 
-# ---------- A) dsm.enabled=false → 请求体逐字节等于今天（golden 冻结旧构造式） ----------
-def test_A_legacy_body_byte_identical(monkeypatch, stub):
+# ---------- A) dsm off → 显式拒绝（DSM 是唯一出站通道，native /chat/completions 已删） ----------
+def test_A_dsm_off_refuses(monkeypatch, stub):
+    """dsm.enabled=false：不再构造 native OpenAI body（legacy 分支已删），显式报错指引启用 DSM。"""
     monkeypatch.setattr(dsm, "cfg", lambda sms=None: _dsm(enabled=False))
     m, note = gateway.chat(MSGS)
-    assert (m or {}).get("content") == "好" and note == "finish=stop"
-    assert len(stub["legacy"]) == 1 and not stub["dsm"], "dsm off 却走了信封路径"
-    path, body = stub["legacy"][0]
-    # golden＝今天 gateway.py:42 的构造式（原样冻结：任何人动 legacy 构造即红）
-    golden = {"model": CFG["model"], "messages": MSGS, "max_tokens": int(CFG["max_tokens"]),
-              "tools": list(TOOLS), **{k: CFG[k] for k in ("temperature", "top_p", "reasoning_effort")
-                                       if CFG.get(k) is not None}}
-    assert path == "/chat/completions"
-    assert json.dumps(body, ensure_ascii=False, sort_keys=True).encode("utf-8") == \
-        json.dumps(golden, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    assert m is None, "dsm off 却出了正文（native 分支应已删除）"
+    assert "DSM 未启用" in str(note), "拒绝消息未指引启用 DSM：%s" % note
+    assert not stub["legacy"] and not stub["dsm"], "dsm off 不应发任何出站请求"
 
 
-def test_A_legacy_sse_body_byte_identical(monkeypatch):
-    """gateway_sse.py:9-11 的流式 body 同样一字未改（golden 冻结·含 Content-Type 与 timeout）。"""
+def test_A_sse_dsm_off_refuses(monkeypatch, stub):
+    """gateway_sse._once 同口径：dsm off → 显式拒绝，不再构造 native SSE body（_req 已删）。"""
     monkeypatch.setattr(dsm, "cfg", lambda sms=None: _dsm(enabled=False))
-    monkeypatch.setattr(gateway_sse, "settings", _Set)
-    import agent_dispatch as ad
-    monkeypatch.setattr(ad, "tools_schema", lambda: list(TOOLS))
-    req, tout = gateway_sse._req(MSGS)
-    golden = {"model": CFG["model"], "messages": MSGS, "max_tokens": int(CFG["max_tokens"]),
-              "tools": list(TOOLS), "stream": True,
-              **{k: CFG[k] for k in ("temperature", "top_p", "reasoning_effort") if CFG.get(k) is not None}}
-    assert req.data == json.dumps(golden).encode("utf-8"), "流式 legacy body 字节变了"
-    assert req.get_header("Content-type") == "application/json" and tout == CFG["timeout"]
+    m, note = gateway_sse._once(MSGS, lambda x: None)
+    assert m is None and "DSM 未启用" in str(note), "SSE dsm off 未显式拒绝：%s" % note
+    assert not stub["legacy"] and not stub["dsm"], "SSE dsm off 不应发任何出站请求"
 
 
 def test_A_default_switch_is_off():
-    """默认值必须来自配置读取处（settings.default.json）且为安全默认。"""
+    """出厂默认＝DSM 关（灰度期安全默认）。注：native /chat/completions 出站分支已删除，
+    操作员上线前须 dsm.py on 打开 DSM——DSM 是 sms-core 唯一出站通道（统一经 smsocket）。"""
     c = dsm.DEFAULTS
     assert c["enabled"] is False and c["openai_compat"] is True and c["fallback"] is True and c["out"] == "json"
     import settings
@@ -201,16 +191,13 @@ def test_B_delta_stream_feeds_on_line(monkeypatch, stub):
     assert any("你好" in x for x in lines), "delta 未吐给 on_line（主屏会空）"
 
 
-def test_B_delta_falls_back_to_legacy_when_disabled(monkeypatch, stub):
-    """dsm off：_dsm_once 绝不被调用（走今天完全相同的 legacy 构造）。"""
+def test_B_delta_dsm_off_refuses(monkeypatch, stub):
+    """dsm off：_once 显式拒绝（native SSE 已删）；_dsm_once 绝不被调用。"""
     monkeypatch.setattr(dsm, "cfg", lambda sms=None: _dsm(enabled=False))
     called = []
     monkeypatch.setattr(gateway_sse, "_dsm_once", lambda *a, **k: called.append(1))
-    class _Stop(Exception):
-        pass
-    monkeypatch.setattr(gateway_sse, "_req", lambda msgs: (_ for _ in ()).throw(_Stop()))
-    with pytest.raises(_Stop):            # 落回今天的 legacy 构造（_req 被调用＝路径正确）
-        gateway_sse._once(MSGS, lambda x: None)
+    m, note = gateway_sse._once(MSGS, lambda x: None)
+    assert m is None and "DSM 未启用" in str(note), "dsm off 未显式拒绝：%s" % note
     assert not called, "dsm off 却进了信封路径"
 
 
@@ -306,22 +293,27 @@ def test_G_no_api_key_in_envelope_or_egress(tmp_path):
     assert "sk-SECRET-DO-NOT-LOG" not in blob and "api_key" not in blob
 
 
-# ---------- H) 降级：服务端未装 DSM → 回 legacy 且留一条 warning（绝不静默） ----------
+# ---------- H) 降级：服务端未装 DSM / 空信封 / 冷却期 → 不再回 native，显式报错＋留痕（绝不静默） ----------
 @pytest.mark.parametrize("code", [404, 415])
-def test_H_downgrade_to_legacy_with_warning(monkeypatch, stub, code):
+def test_H_degraded_dsm_refuses_loudly(monkeypatch, stub, code):
+    """_dsm_chat 回 kind=legacy（DSM 降级）时，chat() 不再构造 native body（已删），
+    返回 (None, 显式消息) 并留一条 warning——红线「绝不静默」仍在，只是目的地变了。"""
     monkeypatch.setattr(dsm, "cfg", lambda sms=None: _dsm(enabled=True, fallback=True))
     stub["chat"] = (None, "HTTP %d no dsm route" % code, code, "")
     m, note = gateway.chat(MSGS)
-    assert (m or {}).get("content") == "好", "降级后没走通 legacy"
-    assert len(stub["legacy"]) == 1, "未落回 legacy 路径"
-    assert len(stub["warn"]) == 1 and str(code) in stub["warn"][0], "降级没打 warning（红线：绝不静默）"
+    assert m is None, "DSM 降级后不应再有正文（native 分支已删）：%r" % m
+    assert "统一经 smsocket" in str(note) or "smsocket" in str(note), \
+        "降级消息应显式指向 smsocket DSM 协议：%s" % note
+    assert not stub["legacy"], "DSM 降级却仍发了 native 请求（分支应已删除）"
+    assert stub["warn"], "降级必须留痕（红线：绝不静默）"
 
 
 def test_H_downgrade_when_schema_route_missing(monkeypatch, stub):
     monkeypatch.setattr(dsm, "cfg", lambda sms=None: _dsm(enabled=True, fallback=True))
     stub["schema"] = (None, "HTTP 404", 404, "")
-    gateway.chat(MSGS)
-    assert len(stub["legacy"]) == 1 and stub["warn"], "schema 首帧 404 未降级/未告警"
+    m, note = gateway.chat(MSGS)
+    assert m is None, "schema 路由缺失（降级）后不应再有正文（native 已删）：%r" % m
+    assert not stub["legacy"] and stub["warn"], "schema 首帧 404 降级未告警/误发 native"
     assert not [p for p, _b, _a in stub["dsm"] if p == dsm.ENDPOINT], "已降级却仍继续发信封 chat"
 
 
@@ -334,17 +326,17 @@ def test_H_no_downgrade_when_fallback_false(monkeypatch, stub):
 
 
 # ---------- B4) 200 空信封绝不变成「空响应」（2026-10-06 用户报障：换 DSM 返回空响应） ----------
-def test_B4_empty_envelope_falls_back_to_legacy_loudly(monkeypatch, stub):
+def test_B4_empty_envelope_refuses_loudly(monkeypatch, stub):
     """服务端回 200 但信封里没有正文/没有工具调用（上游只吐 reasoning 就被截断，
     或 _dsm_stream 收口帧 answer=""）——旧行为是把空 message 交给 gateway.run，
-    于是用户看到「空响应（上游 200 无正文·多为并发过载）」。新行为：loud 降级 legacy
-    全量重发一次，且绝不把空轮次写进 delta 水位（写了＝以后每轮都少一段历史）。"""
+    于是用户看到「空响应（上游 200 无正文·多为并发过载）」。新行为：_dsm_chat 回 legacy 标记，
+    chat() 显式拒绝（native 分支已删）＋留痕，绝不把空 message 交上去、也绝不重发 native。"""
     monkeypatch.setattr(dsm, "cfg", lambda sms=None: _dsm(enabled=True, fallback=True))
     stub["chat"] = ({"v": 1, "seq": 1, "stop": "end_turn", "answer": "",
                      "reason": {"tokens": 0, "summary": ""}}, "", 200, dsm.CTYPE)
     m, note = gateway.chat(MSGS)
-    assert (m or {}).get("content") == "好", "空信封未落 legacy：%r / %s" % (m, note)
-    assert stub["legacy"], "空信封必须真的重发 legacy（不是把空 message 交上去）"
+    assert m is None, "空信封不应出正文（旧 native 重发已删）：%r / %s" % (m, note)
+    assert not stub["legacy"], "空信封后误发 native 请求"
     assert stub["warn"], "降级必须留痕（契约：绝不静默）"
     assert "空信封" in "".join(stub["warn"])
 
@@ -355,12 +347,14 @@ def test_B4_empty_envelope_does_not_advance_watermark(monkeypatch, stub):
     stub["chat"] = ({"v": 1, "seq": 1, "stop": "end_turn", "answer": "",
                      "reason": {"tokens": 0, "summary": ""}}, "", 200, dsm.CTYPE)
     msgs = [{"role": "system", "content": "S"}, {"role": "user", "content": "第一轮"}]
-    gateway.chat(msgs)
+    m1, _n1 = gateway.chat(msgs)
+    assert m1 is None, "空信封不应出正文（native 已删）"
     stub["chat"] = None                      # 这一轮恢复正常
-    gateway.chat(msgs + [{"role": "assistant", "content": "答"}, {"role": "user", "content": "第二轮"}])
+    m2, _n2 = gateway.chat(msgs + [{"role": "assistant", "content": "答"}, {"role": "user", "content": "第二轮"}])
     env = stub["dsm"][-1][1]
     assert [t[1] for t in env["d"]][0] == "第一轮", \
         "空轮次被写进了水位：%s" % env["d"]
+    assert m2 is not None, "恢复正常轮后应出正文"
 
 
 def test_B4_empty_envelope_no_fallback_is_error_not_empty(monkeypatch, stub):
@@ -369,17 +363,19 @@ def test_B4_empty_envelope_no_fallback_is_error_not_empty(monkeypatch, stub):
     stub["chat"] = ({"v": 1, "seq": 1, "stop": "end_turn", "answer": ""}, "", 200, dsm.CTYPE)
     m, note, kind = gateway._dsm_chat(MSGS)
     assert m is None and kind == "err" and "空信封" in str(note)
-    assert stub["legacy"] == [], "fallback=false 不得偷发 legacy（契约 §2 loud error）"
+    assert stub["legacy"] == [], "fallback=false 不得偷发 native（native 分支已删，契约 §2 loud error）"
 
 
-def test_B4_stream_empty_envelope_falls_back(monkeypatch, stub):
-    """流式路同义：out=json 且整包为空 → legacy，绝不 painted 一个空答案收场。"""
+def test_B4_stream_empty_envelope_refuses(monkeypatch, stub):
+    """流式路同义：out=json 且整包为空 → _dsm_once 回 legacy 标记，_once 显式拒绝（不再发 native）。"""
     monkeypatch.setattr(dsm, "cfg", lambda sms=None: _dsm(enabled=True, out="json", fallback=True))
     lines = []
     stub["chat"] = ({"v": 1, "seq": 1, "stop": "end_turn", "answer": "",
                      "reason": {"tokens": 0, "summary": ""}}, "", 200, dsm.CTYPE)
     m, note, kind = gateway_sse._dsm_once(MSGS, lines.append)
-    assert kind == "legacy" and not lines, "流式空信封未降级：%s %s" % (kind, lines)
+    assert kind == "legacy" and not lines, "流式空信封未回 legacy 标记：%s %s" % (kind, lines)
+    m2, note2 = gateway_sse._once(MSGS, lines.append)
+    assert m2 is None, "流式空信封经 _once 不应出正文（native 已删）：%r" % m2
 
 
 def test_B4_partial_delta_is_not_treated_as_empty(monkeypatch, stub):
@@ -433,25 +429,27 @@ def test_H_409_resyncs_once_then_ok(monkeypatch, stub):
     assert not dsm.broken(), "自愈成功必须清掉冷却"
 
 
-def test_H_409_persistent_degrades_and_latches(monkeypatch, stub):
-    """反复 409 → 一次重发后降级 legacy，并记冷却（绝不无限重试）。"""
+def test_H_409_persistent_refuses_and_latches(monkeypatch, stub):
+    """反复 409 → 一次重发后降级（_dsm_chat 回 legacy 标记），chat() 显式拒绝 native（已删）＋记冷却。"""
     monkeypatch.setattr(dsm, "cfg", lambda sms=None: _dsm(enabled=True, fallback=True))
     stub["chat"] = (None, "HTTP 409 state mismatch", 409, "")
     m, note = gateway.chat(MSGS)
-    assert (m or {}).get("content") == "好" and stub["legacy"], "409 耗尽后未落 legacy"
+    assert m is None, "409 耗尽降级后不应再有正文（native 已删）：%r" % m
     chats = [p for p, _b, _a in stub["dsm"] if p == dsm.ENDPOINT]
     assert len(chats) == 2, "应恰好重试一次：%d" % len(chats)
     assert dsm.broken(), "持续 409 必须记冷却"
+    assert not stub["legacy"] and stub["warn"], "降级应显式拒绝 native 并留痕"
 
 
 def test_H_cooldown_short_circuits_envelope(monkeypatch, stub):
-    """冷却期内不再试信封：0 次 DSM 往返（否则每轮白打四次 HTTP）。"""
+    """冷却期内不再试信封：_dsm_chat 直接回 legacy 标记，chat() 显式拒绝 native（已删），0 次 DSM 往返。"""
     monkeypatch.setattr(dsm, "cfg", lambda sms=None: _dsm(enabled=True, fallback=True))
     dsm.mark_broken("unit test")
     m, note = gateway.chat(MSGS)
-    assert (m or {}).get("content") == "好" and stub["legacy"]
+    assert m is None, "冷却期内不应再有正文（native 已删）：%r" % m
     assert not stub["dsm"], "冷却期内仍发了信封请求：%s" % stub["dsm"]
-    assert not stub["warn"], "降级冷却不该每轮重复刷屏告警"
+    assert not stub["legacy"], "冷却降级后误发 native"
+    assert "降级" in str(note), "降级消息应指出 DSM 降级原因：%s" % note
 
 
 def test_H_422_does_not_latch(monkeypatch, stub):
@@ -463,12 +461,13 @@ def test_H_422_does_not_latch(monkeypatch, stub):
     assert not dsm.broken(), "422 记冷却会把自身缺陷藏 120 秒"
 
 
-def test_H_404_downgrade_latches(monkeypatch, stub):
-    """服务端无 DSM 路由 → 降级同时记冷却（修好前别再反复试）。"""
+def test_H_404_downgrade_refuses_and_latches(monkeypatch, stub):
+    """服务端无 DSM 路由 → 降级标记后 chat() 显式拒绝 native（已删）＋记冷却（修好前别再反复试）。"""
     monkeypatch.setattr(dsm, "cfg", lambda sms=None: _dsm(enabled=True, fallback=True))
     stub["chat"] = (None, "HTTP 404", 404, "")
-    gateway.chat(MSGS)
-    assert stub["legacy"] and dsm.broken()
+    m, note = gateway.chat(MSGS)
+    assert m is None and dsm.broken(), "404 降级应拒绝 native 并记冷却：%r" % m
+    assert not stub["legacy"], "404 降级后误发 native 请求"
 
 
 def test_H_switch_flip_clears_latch(monkeypatch, stub):
@@ -483,13 +482,14 @@ def test_H_switch_flip_clears_latch(monkeypatch, stub):
     assert written.get("llm_gateway.dsm", {}).get("enabled") is True
 
 
-def test_H_build_env_failure_falls_back_with_warning(monkeypatch, stub):
-    """信封装不下（多模态）→ 降级 legacy ＋ warning，不丢图不静默。"""
+def test_H_build_env_failure_refuses_loudly(monkeypatch, stub):
+    """信封装不下（多模态）→ _dsm_chat 回 legacy 标记，chat() 显式拒绝 native（已删）＋留痕，不静默。"""
     monkeypatch.setattr(dsm, "cfg", lambda sms=None: _dsm(enabled=True))
     msgs = [{"role": "system", "content": "S"},
             {"role": "user", "content": [{"type": "text", "text": "看这张图"}, {"type": "image_url", "image_url": {"url": "data:,"}}]}]
     m, note = gateway.chat(msgs)
-    assert (m or {}).get("content") == "好" and stub["legacy"] and stub["warn"]
+    assert m is None, "多模态装不下信封时不应出正文（native 已删）：%r" % m
+    assert not stub["legacy"] and stub["warn"], "降级应显式拒绝 native 并留痕"
 
 
 def test_H_delta_watermark_only_new_turns(monkeypatch, stub):

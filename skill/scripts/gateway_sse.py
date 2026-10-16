@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""gateway_sse.py — 原生网关 SSE 流式（2026-09-26 治「运行慢」观感·ps1 壳已流式而 python 壳整轮等待）：stream(msgs, on_line) 以 stream:true 请求 /chat/completions，按 index 合并 delta.tool_calls 分片（id/name/arguments 拼接），返回与 gateway.chat 同构的 (message, note)。批7 返工②（用户 2026-09-27 截图：思考混在 delta.content 里直刷主屏——上游 auto 不总用 reasoning_content 字段）：流式期间 content 与 reasoning 段一律经「◌ 」reasoning 信封只进 F9 过程流；轮末由 gateway.run 判定——无 tool_calls 才把整段正文送主输出，有 tool_calls 则该轮正文＝过程话永不上主屏（printed=True 防重复吐显·纯思考模型兜底 content=思考）。「残缺」根治（批4）：v2 全程另存 acc 完整正文，返回 content=acc 全文；上游不支持 event-stream 时读整包按非流式同构返回·思考走 ◌ 信封正文由 run 整段上屏；异常回 (None, err)。llm_gateway.stream=false 即回退整轮 chat()。用法：经 gateway.chat 调用；python -B gateway_sse.py "<文本>" 直连验证流式。"""
+"""gateway_sse.py — DSM 流式出站（统一经 smsocket DSM 协议）：stream(msgs, on_line) 经 _dsm_once 走 /v1/dsm/chat（out=json 整包或 out=delta 逐帧 ndjson），按 seq 归并 delta.tool_calls 分片（id/name/arguments 拼接），返回与 gateway.chat 同构的 (message, note)。native /chat/completions SSE 分支已于「统一 DSM 直连 smsocket」改造中删除——DSM 未启用/被拒/降级时一律显式报错，绝不静默回退到原生 OpenAI SSE（防未来读者误加回 legacy 路径）。llm_gateway.stream=false 即回退整轮 gateway.chat()。用法：经 gateway.chat 调用；python -B gateway_sse.py "<文本>" 直连验证流式。"""
 import os, sys, json, time, urllib.request, msg_flow, stop_channel as stop, settings
 import retry_io as rio, runtime_rec as rr
 import urllib.error
@@ -7,17 +7,14 @@ import dsm
 import usage_ledger as ul  # 批41 F1 费用台账落盘
 class _NoRetry(Exception): pass
 SENT = "。！？；!?…"
-def _req(msgs):
-    import agent_dispatch as ad
-    c = settings.eff()["llm_gateway"]; body = {"model": c.get("model") or "auto", "messages": msgs, "max_tokens": int(c.get("max_tokens", 1024)), "tools": ad.tools_schema(), "stream": True, **{k: c[k] for k in ("temperature", "top_p", "reasoning_effort") if c.get(k) is not None}}
-    key = (os.environ.get(c.get("api_key_env") or "") or "").strip() or str(c.get("api_key") or "")  # 空 env 不覆盖配置密钥（同 gateway.cfg 口径）
-    return urllib.request.Request(dsm.api_url("/chat/completions", str(c.get("base_url", ""))), data=json.dumps(body).encode("utf-8"), headers={"Authorization": "Bearer " + str(key), "Content-Type": "application/json", "Accept": "text/event-stream"}), int(c.get("timeout", 120))
 def _emit(buf, on_line):
     while buf:
         i = next((j for j, ch in enumerate(buf) if ch == "\n" or (ch in SENT and j > 24)), -1)
         if i < 0 and len(buf) < 88: break
-        seg = buf[:i + 1] if i >= 0 else buf[:88]
-        on_line(seg.rstrip("\n")); buf = buf[i + 1:] if i >= 0 else buf[88:]
+        if i >= 0:
+            seg = buf[:i + 1]; on_line(seg.rstrip("\n")); buf = buf[i + 1:]
+        else:
+            seg = buf[:88]; on_line(seg.rstrip("\n")); buf = buf[88:]
     return buf
 def _msg(d):
     m = (d.get("choices") or [{}])[0].get("message") or {}; m["content"] = (m.get("content") or "").replace("\x00", "").replace("\r", "\n"); return m, str((d.get("choices") or [{}])[0].get("finish_reason"))
@@ -25,11 +22,12 @@ def _rline(s): return msg_flow.brief(msg_flow.make("reasoning", s))
 def _dsm_once(msgs, on_line):
     """dsm.enabled=true 的流式路径（契约 §4）：out=json → 单条信封解码后按今天非流式同构返回；
     out=delta → application/x-ndjson 逐条信封按 seq 归并，增量文本经 _emit 上 ◌ reasoning 信封。
-    回 (message, note, kind)，kind∈ok|legacy|err；legacy＝落回今天完全相同的路径。"""
+    回 (message, note, kind)，kind∈ok|legacy|err；legacy＝DSM 降级（调用方不再落 native 路，
+    而是显式报错——DSM 是唯一出站通道）。"""
     import gateway as g
     c = dsm.cfg()
     if dsm.broken():
-        # 冷却期内不再试信封：直接落回今天完全相同的 legacy 流式路
+        # 冷却期内不再试信封：回 legacy 标记（调用方显式报错，绝不静默走 native）
         return None, "DSM 暂不可用（%s）→legacy" % dsm.broken_info()[1], "legacy"
     pl = lambda x: x and x.strip() and on_line(_rline(x))   # 空/None 段直接吞（信封无 reason 时）
     try:
@@ -39,10 +37,11 @@ def _dsm_once(msgs, on_line):
             mem = dsm.mem_ids(q) or None
         env = dsm.build_env(msgs, tools=__import__("agent_dispatch").tools_schema(),
                             model=g.cfg().get("model") or "auto", dsm_cfg=c, mem=mem)
+        reg = (env.get("x") or {}).get("sms.schema_reg")
     except Exception as e:
         g._dsm_warn("信封构造失败（语义装不下）→legacy：" + str(e)[:120], on_line); return None, str(e)[:150], "legacy"
     if c.get("schema_ref") and dsm.needs_register(env["sch"]):
-        data, err, code, _ct = g._dsm_post(dsm.ENDPOINT_SCHEMA, dsm.schema_frame(env), dsm.CTYPE)
+        data, err, code, _ct = g._dsm_post(dsm.ENDPOINT_SCHEMA, dsm.schema_frame(env, reg), dsm.CTYPE)
         if code in (404, 415):
             if c.get("fallback"):
                 g._dsm_warn("服务端 DSM schema 路由缺失(%d)→降级 legacy" % code, on_line); dsm.mark_broken("sse schema route %d" % code); return None, err, "legacy"
@@ -65,7 +64,7 @@ def _dsm_once(msgs, on_line):
         if isinstance(a, str):
             pbuf[0] = _emit(pbuf[0] + a, pl)
     data, err, code, ct = g._dsm_post(dsm.ENDPOINT, env, dsm.CTYPE_STREAM if out == "delta" else dsm.CTYPE,
-                                     on_frame=_frame if out == "delta" else None)
+                                      on_frame=_frame if out == "delta" else None)
     if code in (404, 415):
         if c.get("fallback"):
             g._dsm_warn("服务端未提供 DSM(%d)→降级 legacy（dsm.fallback=true）" % code, on_line); dsm.mark_broken("sse dsm chat %d" % code); return None, err, "legacy"
@@ -77,18 +76,19 @@ def _dsm_once(msgs, on_line):
         try:
             env = dsm.build_env(msgs, tools=__import__("agent_dispatch").tools_schema(),
                                 model=g.cfg().get("model") or "auto", dsm_cfg=c, mem=mem, resync=True)
+            reg = (env.get("x") or {}).get("sms.schema_reg")
         except Exception as e:
             if c.get("fallback"):
                 g._dsm_warn("重同步信封构造失败→legacy：" + str(e)[:120], on_line); dsm.mark_broken("sse resync build_env"); return None, str(e)[:150], "legacy"
             return None, str(e)[:150], "err"
         if c.get("schema_ref") and dsm.needs_register(env["sch"]):
-            data, err, code, _ct = g._dsm_post(dsm.ENDPOINT_SCHEMA, dsm.schema_frame(env), dsm.CTYPE)
+            data, err, code, _ct = g._dsm_post(dsm.ENDPOINT_SCHEMA, dsm.schema_frame(env, reg), dsm.CTYPE)
             if code in (404, 415) and c.get("fallback"):
                 g._dsm_warn("服务端 DSM schema 路由缺失(%d)→降级 legacy" % code, on_line); dsm.mark_broken("sse resync schema %d" % code); return None, err, "legacy"
             if code == 200:
                 dsm.mark_registered(env["sch"])
         data, err, code, ct = g._dsm_post(dsm.ENDPOINT, env, dsm.CTYPE_STREAM if out == "delta" else dsm.CTYPE,
-                                         on_frame=_frame if out == "delta" else None)
+                                          on_frame=_frame if out == "delta" else None)
         if code in (404, 415) and c.get("fallback"):
             g._dsm_warn("服务端未提供 DSM(%d)→降级 legacy" % code, on_line); dsm.mark_broken("sse resync chat %d" % code); return None, err, "legacy"
     if data is None:
@@ -125,46 +125,24 @@ def _dsm_once(msgs, on_line):
                 if isinstance(e.get("answer"), str): buf = _emit(buf + e["answer"], pl)
             buf and pl(buf)
         msg["printed"] = True
+        # 逐帧上屏后累积的 reason.summary 已全在上屏记录里，写回历史的
+        # m 必须剥离 reasoning_content——否则下一轮 build_env 把整段推理
+        # 编码进 d，模型复读上一轮推理 → 循环到 max_continue 熔断（2026-10-13）。
+        msg["reasoning_content"] = ""
     tcs = msg.get("tool_calls")
     return msg, "finish=" + str(ch.get("finish_reason") or (resp or {}).get("stop") or "stop"), "ok"
 
 
 def _once(msgs, on_line):
+    # DSM 是唯一出站通道：native /chat/completions SSE 分支已删除，DSM 未启用/被拒/降级时
+    # 一律显式报错，绝不静默回退到原生 OpenAI SSE（防未来读者误加回 legacy 路径）。
     if dsm.enabled():
         m, note, kind = _dsm_once(msgs, on_line)
         if kind != "legacy": return m, note
-    if rf := dsm.legacy_refused(): return None, rf   # openai_compat=false → 拒绝构造 legacy body
-    req, tout = _req(msgs); buf = ""; rbuf = ""; acc = ""; racc = ""; tcs = {}; fr = ""; u = {}; maxch = max(1000, int(settings.get("llm_gateway.stream_max_chunks", 20000) or 20000)); pl = lambda s: s.strip() and on_line(_rline(s))
-    try:
-        with urllib.request.urlopen(req, timeout=tout) as r:
-            if "text/event-stream" not in str(r.headers.get("content-type") or ""):
-                d0 = json.loads(r.read().decode("utf-8", "replace")); ul.rec(d0.get("usage"), model=d0.get("model"), skill=ul.cur_skill())
-                m, note = _msg(d0); rc = m.pop("reasoning_content", "") or ""; rc and on_line(_rline(rc)); return m, note
-            for _, raw in zip(range(maxch), r):  # 批12 防卡死：慢速无限吐流按 chunk 上限截停（默认 2 万·正常远达不到·F4 llm_gateway.stream_max_chunks）
-                stop.check(); ln = raw.decode("utf-8", "replace").strip()
-                if not ln.startswith("data:"): continue
-                p = ln[5:].strip()
-                if p == "[DONE]": break
-                try: d = json.loads(p)
-                except Exception: continue
-                ch = (d.get("choices") or [{}])[0]; de = ch.get("delta") or {}; fr = ch.get("finish_reason") or fr
-                u = d.get("usage") or u  # 批41 F1：上游末帧 usage（有则记，无则不影响）
-                dt = de.get("content") or ""; rt = de.get("reasoning_content") or ""
-                acc += dt; racc += rt; buf = _emit(buf + dt, pl); rbuf = _emit(rbuf + rt, pl)
-                for t in de.get("tool_calls") or []:
-                    e = tcs.setdefault(t.get("index", 0), {"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
-                    f = t.get("function") or {}; e["id"] = e["id"] or (t.get("id") or ""); e["function"]["name"] += f.get("name") or ""; e["function"]["arguments"] += f.get("arguments") or ""
-    except stop.Stopped: raise
-    except Exception as e:
-        detail = ""
-        try: detail = e.read().decode("utf-8", "replace")[:200]
-        except Exception: pass
-        msg = str(e)[:150] + " " + detail
-        raise rio.Retryable(msg) if rio.transient(e) else _NoRetry(msg)
-    pl(buf); pl(rbuf)
-    ul.rec(u, model=str(u.get("model") or ""), skill=ul.cur_skill())
-    if not acc.strip() and racc.strip(): acc = racc.strip()
-    return {"role": "assistant", "content": acc.replace("\x00", "").replace("\r", "\n"), "tool_calls": list(tcs.values()) if tcs else None, "reasoning_content": "", "printed": True}, "finish=" + (fr or "stop")
+        return None, "DSM 流式降级（" + str(note)[:100] + "）——统一经 smsocket DSM 协议出站，不再走 native /chat/completions"
+    if rf := dsm.legacy_refused():
+        return None, "DSM 是唯一出站通道（openai_compat=false 已拒 native body）——请启用 dsm.enabled=true 经 smsocket DSM 协议出站：" + rf
+    return None, "DSM 未启用——sms-core 已统一经 smsocket DSM 协议出站（:config set llm_gateway.dsm.enabled true 或 dsm.py on）"
 def stream(msgs, on_line):
     """提供商流式访问失败＝有限次重试（settings llm_gateway.retries·默认 3·指数退避 1.2s 起封顶 10s）：只在尚未吐字时重试（已吐过正文重试会重复上屏），HTTP 4xx 与 stop 不重试；耗尽回 (None, "重试耗尽(N次) ...")，gateway.run 见标记不再整轮重发。"""
     n = max(0, int(settings.get("llm_gateway.retries", 3))); box = {"out": 0}; bx = {"i": 0}

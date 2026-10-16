@@ -1,4 +1,4 @@
-﻿---
+---
 name: skill_connector
 description: >
   依据 register.json 与 interfaces.json，生成技能间上下文连接链，

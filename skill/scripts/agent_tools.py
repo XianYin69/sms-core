@@ -8,7 +8,13 @@ def bind(on_line=None, ev=False):
     if ev is not False: c["ev"] = ev; return c
 def emit(kind, text, tool="", skill="", ok=None, meta=None):
     c = ac.cur(); e = msg_flow.make(kind, text, conv=c.get("conv") or chains.ACTIVE["conv"], sess=chains.cur_sess(), skill=skill, tool=tool, ok=ok, meta=meta)
-    c["ev"] and c["ev"](e); return c["on_line"](msg_flow.brief(e))
+    c["ev"] and c["ev"](e)
+    ln = msg_flow.brief(e)
+    try:
+        return c["on_line"](ln)
+    except UnicodeEncodeError:
+        try: return c["on_line"](msg_flow.safe(ln))
+        except Exception: return ln
 def _r(p): return os.path.realpath(os.path.abspath(os.path.expanduser(str(p))))
 def read(path, max_lines=120, offset=0):
     """流式窗口读（批27）：只缓存 [offset, offset+max_lines) 行，大文件早停不整读；截断即回续读 offset。"""

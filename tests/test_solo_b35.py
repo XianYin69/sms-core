@@ -24,6 +24,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 S = os.path.join(ROOT, "skill", "scripts")
 sys.path.insert(0, S)
 import solo           # noqa: E402
+import gateway        # noqa: E402
 import dream_pending  # noqa: E402
 
 # ---------- 1) 预算/ttl 下限钳制 ----------
@@ -36,48 +37,48 @@ def test_pos_clamps_non_positive():
     assert solo._pos(0, 30) == 30, "ttl 0 值回落 solo.ttl_min（授予即过期＝白烧审核）"
 
 def test_zero_review_budget_does_not_400(monkeypatch):
-    """配置被写成 0 时，实际发出的请求体 max_tokens 必须是正数（0 会被上游判 400 全域哑火）。"""
-    sent = {}
-    def fake(path, body=None):
-        sent["body"] = body
+    """配置被写成 0 时，DSM 单发信封的预算必须是正数（0 会被上游判 400 全域哑火）。
+    批36 后 SOLO 出站＝gateway._single_shot（DSM 单发）：max_tokens 经 budget.max_out 传，
+    打桩 _single_shot 直接断言收到的 max_tokens 参数已被 _pos 钳成正数。"""
+    seen = {}
+    def fake(sysp, usr, mt, extra_body=None):
+        seen["max_tokens"] = mt
         return {"choices": [{"message": {"content": '{"grant":true,"ttl_min":5,"reason":"t"}'}}]}, ""
-    monkeypatch.setattr(solo.__dict__.get("gateway", None) or __import__("gateway"), "_req", staticmethod(fake))
+    monkeypatch.setattr(gateway, "_single_shot", fake)
     monkeypatch.setattr(solo, "cfg", lambda: {"review_max_tokens": 0, "fast_think": True, "allow_danger": True,
                                               "ttl_min": 30, "max_ttl_min": 120, "notify": False})
     solo.review("write", {"tool": "write", "path": "x", "intent": "回归测试"})
-    assert sent["body"]["max_tokens"] > 0, sent["body"]
+    assert seen.get("max_tokens", 0) > 0, seen
 
-# ---------- 2) 闭思考体＋400 回退 ----------
-def _capture_bodies(fail_first=False):
+
+# ---------- 2) 闭思考体＋400 回退（DSM 单发：闭思考参数经 extra_body 透传进信封 x 段） ----------
+def _capture_calls(fail_first=False):
     calls = []
-    def fake(path, body=None):
-        calls.append(dict(body))
+    def fake(sysp, usr, mt, extra_body=None):
+        calls.append(dict(extra_body or {}))
         if fail_first and len(calls) == 1:
             return None, "HTTP Error 400: Bad Request {\"detail\":{\"error\":{\"message\":\"One or more request parameters are invalid.\"}}}"
         return {"choices": [{"message": {"content": '{"grant":true,"ttl_min":5,"reason":"ok"}'}}]}, ""
     return calls, fake
 
 def test_fast_think_body_and_400_fallback(monkeypatch):
-    import gateway as gw
     g = solo.__dict__
-    monkeypatch.setattr(gw, "_req", staticmethod(lambda *a, **k: None))  # 防真发
-    calls, fake = _capture_bodies(fail_first=True)
-    monkeypatch.setattr(gw, "_req", staticmethod(fake))
-    g["gateway"] = gw
+    calls, fake = _capture_calls(fail_first=True)
+    monkeypatch.setattr(gateway, "_single_shot", fake)
+    g["gateway"] = gateway
     monkeypatch.setattr(solo, "cfg", lambda: {"review_max_tokens": 200, "fast_think": True, "allow_danger": True,
                                               "ttl_min": 30, "max_ttl_min": 120, "notify": False})
     g["gw_fail_reset"]()
     grant, why, ttl = solo.review("write", {"tool": "write", "path": "x", "intent": "回归测试"})
     assert len(calls) == 2, "闭思考体被 400 拒后必须回退旧体重发一次"
     assert calls[0].get("chat_template_kwargs") == {"enable_thinking": False}
-    assert "chat_template_kwargs" not in calls[1], "回退体＝旧体逐字口径"
+    assert "chat_template_kwargs" not in calls[1], "回退体＝无闭思考参数"
     assert grant is True, (grant, why)
 
 def test_fast_think_off_is_legacy_body(monkeypatch):
-    import gateway as gw
-    calls, fake = _capture_bodies()
-    monkeypatch.setattr(gw, "_req", staticmethod(fake))
-    solo.__dict__["gateway"] = gw
+    calls, fake = _capture_calls()
+    monkeypatch.setattr(gateway, "_single_shot", fake)
+    solo.__dict__["gateway"] = gateway
     monkeypatch.setattr(solo, "cfg", lambda: {"review_max_tokens": 200, "fast_think": False, "allow_danger": True,
                                               "ttl_min": 30, "max_ttl_min": 120, "notify": False})
     solo.review("write", {"tool": "write", "path": "x", "intent": "回归测试"})

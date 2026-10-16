@@ -21,8 +21,11 @@ def parse_limit(txt):
         if m: return int(m.group(1))
     return None
 def _post(payload, timeout=90):
-    """直发 /chat/completions 取 (data, err_text)——探测专用，不走重试（要的就是报错原文）。
-    TODO(DSM v1)：探测仍走 legacy /chat/completions——上下文/RPM 探测要的是「报错原文」与整包用量，DSM 信封响应（decode_to_openai_shape 后）虽同形但由 SMSocket 出口层改写 usage 口径，且 dsm.openai_compat=false 时该端点会 410；待服务端 /v1/dsm/chat 回全 usage 三分账后再切信封探测。"""
+    """越界探测取 (data, err_text)——探测专用，不走重试（要的就是报错原文）。
+    端点＝smsocket 的 OpenAI-compat /v1/chat/completions（base_url 已由 smsocket_boot.attach 指向
+    smsocket 网关）：探测要的是**上游报错原文**（「between 1 and N」）与 x-ratelimit 响应头，
+    DSM 信封响应（decode_to_openai_shape 后）由 smsocket 出口层改写 usage 口径且不透传这些头，
+    故越界探测保留 OpenAI-compat 端点；DSM 是**对话出站**唯一通道，本探测属诊断旁路、非对话流。"""
     c = gateway.cfg()
     req = urllib.request.Request(dsm.api_url("/chat/completions", str(c.get("base_url", ""))), data=json.dumps(payload).encode("utf-8"),
         headers={"Authorization": "Bearer " + str(c.get("api_key", "")), "Content-Type": "application/json"})
@@ -42,6 +45,8 @@ def probe_context(model, fill=None):
     d, e = _post({"model": model, "messages": [{"role": "user", "content": "越界探测填充。" * max(1, n // 7)}], "max_tokens": 1}, 180)
     return None if d else parse_limit(e)
 def _probe(model):
+    """RPM 探测（x-ratelimit-limit-requests 响应头）——读 smsocket 网关端点（base_url 已由
+    smsocket_boot.attach 指向 smsocket）：对话出站统一走 DSM 信封，本探测属诊断旁路保留响应头读取。"""
     try:
         c = gateway.cfg(); req = urllib.request.Request(dsm.api_url("/chat/completions", str(c.get("base_url", ""))),
             data=json.dumps({"model": model, "messages": [{"role": "user", "content": "ping"}], "max_tokens": 1}).encode(),
@@ -49,6 +54,8 @@ def _probe(model):
         with urllib.request.urlopen(req, timeout=int(c.get("timeout", 120))) as r: return r.headers.get("x-ratelimit-limit-requests")
     except Exception: return None
 def refresh():
+    # /models 列表＝经 smsocket 网关（base_url 已由 smsocket_boot.attach 指向 smsocket），
+    # 与 gateway.__main__ "models" 同一端点；非对话流诊断旁路。
     models = {}; doc = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "ts_epoch": time.time(), "base_url": gateway.cfg().get("base_url"), "models": models, "err": ""}
     data, err = gateway._req("/models")
     if not data: doc["err"] = err; _wj(doc); return doc

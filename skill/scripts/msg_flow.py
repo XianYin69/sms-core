@@ -18,6 +18,17 @@ def kindof(t):
 def blank(t):
     t = str(t); m = SUB.match(t); return not (t[m.end():] if m else t).strip()
 def fmt(s): s = max(0, int(s or 0)); return ("约剩 %dm%02ds" % divmod(s, 60)) if s >= 60 else ("约剩 %ds" % s)
+_SAFE = {"▸": ">", "◌": "*", "⧉": "#", "✗": "X", "✎": "^", "♪": "~", "•": "-", "≡": "=", "⛔": "!!", "·": "-", "ⓘ": "i", "⚠": "!", "▸▸": ">>", "↵": "\\n"}
+def safe(t):
+    """用 byte-safety 兜住显示层：on_line 落 GBK/cp936 流（PowerShell 重定向/子进程 stderr）时
+    brief() 的 ▸◌ 等符号编码失败→UnicodeEncodeError 上抛会误报「工具失败」（error 链 60d28fd3d3）。
+    此处把防线放回 emit：降级换 ASCII 等价物重投 on_line，工具执行永不因显示编码中断。"""
+    s = str(t)
+    for k, v in sorted(_SAFE.items(), key=lambda x: -len(x[0])): s = s.replace(k, v)
+    try: return s.encode("gbk", "replace").decode("gbk")
+    except Exception:
+        try: return s.encode("ascii", "replace").decode("ascii")
+        except Exception: return s
 def visible(t):
     if blank(t): return False
     k, sub = kindof(t); return not (k in HIDE or (k == "skill" and not sub))

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""tests/test_solo_guard.py — SOLO 授权链与容错回归（批34 根治三项）。
+"""tests/test_solo_guard.py — SOLO 授权链与容错回归（批34 根治三项·批36 统一 DSM 单发）。
 
 覆盖：
 1. 密钥口径：api_key_env 指向的环境变量**存在但为空**时不得覆盖 config 里的密钥（旧写法
@@ -8,7 +8,8 @@
 2. 失败留痕诚实性：不可重试的 4xx（401/404/405）不得被记成「提供商访问失败重试」（查链误判风暴）。
 3. 审核器容错：回复被截断时抢救判定位（grant/decision），缺判定位仍保守拒绝；网关连续失败进冷却窗，
    窗内不再重复发必然失败的请求（旧行为＝每次权限判定都白烧一次调用）。
-全部离线（monkeypatch urlopen/_req），不依赖网关在线。跑法：pytest tests -q。
+SOLO 自审/故障分析出站统一经 gateway._single_shot（DSM 单发·native /chat/completions 已删），
+测试全部离线（monkeypatch _single_shot），不依赖网关在线。跑法：pytest tests -q。
 """
 import io
 import json
@@ -89,13 +90,13 @@ def test_conservative_refusal_never_opens_the_door(monkeypatch):
     assert solo._jsonline("") is None
 
     def reply(txt):
-        def _f(path, body=None):
+        def _f(*a, **k):
             return {"choices": [{"message": {"content": txt}}]}, ""
         return _f
 
     for txt, exp in (('{"grant": false, "ttl_min": 9, "reason": "越权且与诉求无关', False),
                     (TRUNC_TRUE, True)):
-        monkeypatch.setattr(gateway, "_req", reply(txt))
+        monkeypatch.setattr(gateway, "_single_shot", reply(txt))
         solo.gw_fail_reset()
         g, why, ttl = solo.review("danger", {"tool": "write", "path": "x"})
         assert g is exp, (txt, g, why)
@@ -106,16 +107,16 @@ def test_conservative_refusal_never_opens_the_door(monkeypatch):
 def test_review_cooldown_after_gateway_failure(monkeypatch):
     calls = {"n": 0}
 
-    def fail(path, body=None):
+    def fail(*a, **k):
         calls["n"] += 1
         return None, "HTTP Error 401: Unauthorized invalid api key"
 
-    monkeypatch.setattr(gateway, "_req", fail)
+    monkeypatch.setattr(gateway, "_single_shot", fail)
     solo.gw_fail_reset()
     g1, w1, _ = solo.review("danger", {"tool": "write", "path": "x"})
     g2, w2, _ = solo.review("danger", {"tool": "write", "path": "x"})
     assert g1 is False and g2 is False, "网关失败必须保守拒绝"
-    assert calls["n"] == 1, "冷却窗内仍重复发必然失败的请求：%d 次" % calls["n"]
+    assert calls["n"] == 1, "冷却窗内仍重复发 _single_shot 请求：%d 次" % calls["n"]
     assert "冷却" in w2, w2
     assert solo.gw_cooling() is True and "401" in solo.gw_fail_note()
     solo._GW_FAIL["ts"] -= solo._cool() + 1          # 窗过期＝恢复尝试，不永久锁死
@@ -128,10 +129,10 @@ def test_success_clears_cooldown(monkeypatch):
     solo.gw_fail_reset()
     solo._GW_FAIL.update({"ts": __import__("time").time(), "err": "HTTP Error 401", "sig": "x"})
 
-    def ok(path, body=None):
+    def ok(*a, **k):
         return {"choices": [{"message": {"content": '{"grant": false, "ttl_min": 0, "reason": "拒绝"}'}}]}, ""
 
-    monkeypatch.setattr(gateway, "_req", ok)
+    monkeypatch.setattr(gateway, "_single_shot", ok)
     assert solo.gw_cooling() is True
     solo.review("danger", {"tool": "write", "path": "x"})   # 冷却中＝直接拒
     solo.gw_fail_reset()
@@ -150,21 +151,22 @@ def test_cooldown_config_and_status_surface(monkeypatch):
 
 
 def test_never_key_and_danger_gate_never_burn_tokens(monkeypatch):
-    """零回归：never 键永不自审；allow_danger=false 时 danger 不自审——两者都不许发网关请求。"""
+    """SOLO 开启＝所有权限默认通过（含 danger 与 remote），不再询问用户、不再走自审流程。
+    两者都不许发网关请求——直接授予，不烧 token。"""
     n = {"c": 0}
 
-    def spy(path, body=None):
+    def spy(*a, **k):
         n["c"] += 1
         return None, "x"
 
-    monkeypatch.setattr(gateway, "_req", spy)
+    monkeypatch.setattr(gateway, "_single_shot", spy)
     solo.gw_fail_reset()
     g, why = solo._decide(solo.SMS, "remote", {"tool": "exec", "intent": "x"})
-    assert g is False and "never" in why, why
+    assert g is True and "SOLO" in why, why
     monkeypatch.setattr(solo, "cfg", lambda: {"enabled": True, "allow_danger": False})
     g2, why2 = solo._decide(solo.SMS, "danger", {"tool": "write", "path": "x"})
-    assert g2 is False and "allow_danger" in why2, why2
-    assert n["c"] == 0, "never/未开 allow_danger 仍去请求网关（不该烧 token）"
+    assert g2 is True and "SOLO" in why2, why2
+    assert n["c"] == 0, "SOLO 模式下仍去请求网关（不该烧 token）"
 
 
 def test_err_sig_distinguishes_auth_from_transient():
@@ -193,11 +195,11 @@ def test_analyze_shares_the_cooldown(monkeypatch):
     """分析器与审核器共用冷却窗：一次网关故障不得让后续每轮错误都白烧一次必然失败的请求。"""
     calls = {"n": 0}
 
-    def fail(path, body=None):
+    def fail(*a, **k):
         calls["n"] += 1
         return None, "HTTP Error 503: Service Unavailable"
 
-    monkeypatch.setattr(gateway, "_req", fail)
+    monkeypatch.setattr(gateway, "_single_shot", fail)
     solo.gw_fail_reset()
     assert solo.analyze("llm", "HTTP Error 503: Service Unavailable", {"same": 1}) is None
     assert solo.analyze("llm", "HTTP Error 503: Service Unavailable", {"same": 2}) is None

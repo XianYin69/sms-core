@@ -1,4 +1,4 @@
-﻿---
+---
 name: skill_register
 description: >
   标记用户电脑上技能的安装位置与所用工具，扫描各安装根目录，

@@ -61,7 +61,15 @@ def cur_sess():
 def new_sess(name=""):
     sid = "sess-" + time.strftime("%Y%m%d-%H%M%S"); m = _smap(); m[sid] = {"created": time.strftime("%Y-%m-%d %H:%M:%S"), "name": (name or "").strip()[:40] or sid[5:], "kind": "shell", "key": sid, "pid": os.getpid(), "last_active": time.strftime("%Y-%m-%d %H:%M:%S"), "state": "active", "conv": ""}
     import atomic_io; atomic_io.wjson(_st("sessions.json"), m); open(_st("current_session"), "w", encoding="utf-8").write(sid)
-    ACTIVE["sess"] = sid; record("session", "sess-new:" + sid + " " + m[sid]["name"]); return "已新建并切入会话（session）" + sid + "——新建会话＝新 session 非 conv·conv 每输入/派发自动开收（批23 对等对话）"
+    ACTIVE["sess"] = sid; record("session", "sess-new:" + sid + " " + m[sid]["name"])
+    # Create session persistence files
+    try:
+        import session
+        sms = resolve_home.ensure()
+        session.create(sms, m[sid]["name"], True)
+    except Exception:
+        pass  # Fail silently to not break session creation
+    return "已新建并切入会话（session）" + sid + "——新建会话＝新 session 非 conv·conv 每输入/派发自动开收（批23 对等对话）"
 def use_sess(sid):
     if sid not in _smap(): return "无此会话：" + sid + "（session list 查看）"
     open(_st("current_session"), "w", encoding="utf-8").write(sid); ACTIVE["sess"] = sid; record("session", "sess-use:" + sid); return "已切换会话 " + sid

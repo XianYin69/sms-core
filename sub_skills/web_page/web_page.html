@@ -1,0 +1,719 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SMS 传真机控制台</title>
+<style>
+:root{--m1:#f4f8fc;--m2:#ccd6e1;--m3:#94a2b3;--edge:#5b697a;--lcd:#04161b;--lcdfg:#3ff0d6;
+--amber:#ffb02e;--red:#ff5252;--grn:#5cf08a;--cyan:#54d9ff;--paper:#f7f3e7;--ink:#1b2026}
+*{box-sizing:border-box}
+body{margin:0;padding:14px;background:radial-gradient(120% 90% at 50% -10%,#232c37,#0a0d12 70%);
+color:#dbe4ee;font:14px/1.55 "Segoe UI",system-ui,"Microsoft YaHei",sans-serif}
+button{font:inherit;color:inherit}
+.metal{background:linear-gradient(180deg,#f7fafd 0%,#dde6ef 42%,#b7c3d2 52%,#e8eff6 100%);
+border:1px solid var(--edge);border-radius:14px;color:#1d252e;position:relative;
+box-shadow:0 1px 0 rgba(255,255,255,.9) inset,0 -3px 7px rgba(0,0,0,.2) inset,0 12px 26px rgba(0,0,0,.5)}
+.gloss{overflow:hidden}
+.screw{position:absolute;width:9px;height:9px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#93a1b1 60%,#4d5866);box-shadow:0 1px 2px rgba(0,0,0,.55) inset}
+#chassis{max-width:1420px;margin:0 auto;padding:14px 16px 16px;display:flex;flex-direction:column;
+min-height:calc(100vh - 28px)}
+#chassis>.screw:nth-of-type(1){top:7px;left:8px}#chassis>.screw:nth-of-type(2){top:7px;right:8px}
+#chassis>.screw:nth-of-type(3){bottom:7px;left:8px}#chassis>.screw:nth-of-type(4){bottom:7px;right:8px}
+.brand{display:flex;align-items:baseline;gap:10px;padding:2px 8px 10px;border-bottom:1px solid rgba(0,0,0,.16)}
+.brand b{font-size:17px;letter-spacing:3px;color:#16202b;text-shadow:0 1px 0 #fff}
+.brand span{font-size:11px;color:#4a5866;letter-spacing:1px}
+.brand em{margin-left:auto;font-style:normal;font-size:11px;color:#4a5866}
+</style>
+<style>
+/* ---- 三区：左＝出纸口(上)/进纸器(下) 上下分屏 · 右＝控制面板通高 ---- */
+#zones{display:grid;grid-template-columns:minmax(0,1fr) 330px;grid-template-rows:minmax(260px,1fr) auto;
+grid-template-areas:"tray panel" "feeder panel";
+gap:14px;margin-top:12px;flex:1 1 auto;min-height:0}
+.z-tray{grid-area:tray;display:flex;flex-direction:column;min-height:0}
+.z-feeder{grid-area:feeder;min-width:0}
+#panel{grid-area:panel;min-width:0}
+.zone{padding:10px 12px 12px;min-width:0;min-height:0;border-radius:12px;background:linear-gradient(180deg,#e9eff6,#c3cedb 55%,#dfe7ef);
+border:1px solid var(--edge);box-shadow:0 1px 0 #fff inset,0 -2px 5px rgba(0,0,0,.16) inset}
+.ztitle{font-size:11px;letter-spacing:2px;color:#3c4a58;text-transform:uppercase;margin:0 0 8px;
+display:flex;align-items:center;gap:8px}
+.ztitle i{font-style:normal;font-size:10px;color:#6b7a89;letter-spacing:0}
+/* ---- 进纸口 ---- */
+#feeder{position:relative;padding:12px 14px 14px;border-radius:10px 10px 4px 4px;
+background:linear-gradient(180deg,#2b3542,#1b222c);box-shadow:0 3px 8px rgba(0,0,0,.55) inset,0 1px 0 #fff}
+#feeder .lip{position:absolute;left:10px;right:10px;top:5px;height:5px;border-radius:3px;
+background:linear-gradient(180deg,#000,#39434f);box-shadow:0 1px 0 rgba(255,255,255,.35)}
+#feedrow{display:flex;gap:8px;margin-top:6px}
+#cmd{flex:1;min-width:0;padding:9px 11px;border-radius:7px;border:1px solid #0a0f14;background:#08131a;
+color:var(--lcdfg);font:13px/1.35 Consolas,"Cascadia Mono",monospace;
+box-shadow:0 2px 6px rgba(0,0,0,.6) inset,0 0 0 1px rgba(84,217,255,.12)}
+#cmd::placeholder{color:#2f6b74}
+#cmd:focus{outline:none;box-shadow:0 2px 6px rgba(0,0,0,.6) inset,0 0 0 2px rgba(84,217,255,.45)}
+#hist{display:flex;flex-direction:column;gap:4px}
+#ac{position:absolute;left:14px;right:14px;top:74px;z-index:9;display:none;max-height:190px;overflow:auto;
+background:#071016;border:1px solid #2c4a56;border-radius:8px;box-shadow:0 10px 24px rgba(0,0,0,.6)}
+#ac b{display:block;padding:4px 9px;font-size:12px;font-weight:400;color:#9fe8dc;cursor:pointer}
+#ac b.sel{background:#123844;color:#fff}
+#ac b s{float:right;text-decoration:none;color:#5c7c88;font-size:11px}
+</style>
+<style>
+/* ---- 实体按键 ---- */
+.key{cursor:pointer;user-select:none;border:1px solid #46525f;border-radius:9px;padding:7px 10px;min-width:44px;text-align:center;font-size:12px;letter-spacing:.5px;color:#16202b;background:linear-gradient(180deg,#fff,#e2eaf2 46%,#c2cedb 54%,#eef3f8);box-shadow:0 1px 0 #fff inset,0 -2px 4px rgba(0,0,0,.18) inset,0 3px 0 #7a8797,0 6px 12px rgba(0,0,0,.35);transition:transform .05s,box-shadow .05s}
+.key:hover{background:linear-gradient(180deg,#fff,#eaf1f7 46%,#cdd8e4 54%,#f3f7fb)}
+.key:active,.key.down{transform:translateY(3px);box-shadow:0 1px 0 #fff inset,0 -1px 3px rgba(0,0,0,.2) inset,0 0 0 #7a8797,0 2px 5px rgba(0,0,0,.4)}
+.key.wide{min-width:96px}
+.key.acc{color:#062a33;background:linear-gradient(180deg,#e9fbff,#a9e6f5 46%,#6fc4dc 54%,#d6f4fb);border-color:#3d7c8c}
+.key.warn{color:#3a2200;background:linear-gradient(180deg,#fff6df,#ffd89a 46%,#e5b463 54%,#fff0d2);border-color:#8a6a2a}
+.key.stop{color:#fff;background:linear-gradient(180deg,#ff8b8b,#e03a3a 46%,#b32020 54%,#f06b6b);border-color:#7c1414}
+.key.go{color:#04240f;background:linear-gradient(180deg,#c9ffdc,#6ee29a 46%,#37b06c 54%,#b6f5cd);border-color:#1d6b41}
+.key.sm{min-width:0;padding:4px 7px;font-size:11px;border-radius:7px;box-shadow:0 1px 0 #fff inset,0 -1px 3px rgba(0,0,0,.16) inset,0 2px 0 #7a8797,0 4px 8px rgba(0,0,0,.3)}
+.key.on{color:#04240f;background:linear-gradient(180deg,#d8ffe6,#7ce9a8 46%,#3fb876 54%,#c2f7d4);border-color:#1d6b41}
+</style>
+<style>
+/* ---- LCD ---- */
+.lcd{background:linear-gradient(180deg,#062028,#04161b 60%,#02090c);border:1px solid #2c4a56;border-radius:9px;box-shadow:0 2px 10px rgba(0,0,0,.7) inset,0 0 0 3px #7d8b9a,0 0 0 4px #4d5866;color:var(--lcdfg);font:12px/1.45 Consolas,"Cascadia Mono",monospace;padding:8px 10px;position:relative;overflow:hidden}
+.lcd::after{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(180deg,rgba(255,255,255,.05) 0 1px,transparent 1px 3px)}
+.lcd b{color:#fff;font-weight:600}
+.lcd .k{color:#7fb9c4}.lcd .a{color:var(--amber)}.lcd .r{color:#ff8a8a}
+#scr{height:100%;overflow:auto;scrollbar-width:thin}
+/* ---- LED ---- */
+#leds{display:flex;gap:6px;flex-wrap:wrap;margin:9px 0 0;padding:7px 9px;border-radius:9px;background:linear-gradient(180deg,#2a333f,#1a222c);box-shadow:0 2px 6px rgba(0,0,0,.5) inset,0 1px 0 #fff}
+.led{display:flex;align-items:center;gap:5px;font-size:11px;color:#c9d6e2;letter-spacing:.5px}
+.led i{width:10px;height:10px;border-radius:50%;background:#3a4552;box-shadow:0 0 0 1px #141a21 inset}
+.led.on i{background:var(--grn);box-shadow:0 0 7px var(--grn),0 0 0 1px #141a21 inset}
+.led.warn i{background:var(--amber);box-shadow:0 0 7px var(--amber),0 0 0 1px #141a21 inset}
+.led.err i{background:var(--red);box-shadow:0 0 8px var(--red),0 0 0 1px #141a21 inset;animation:blink .7s steps(2,end) infinite}
+.led.off i{background:#2b333d}
+@keyframes blink{50%{opacity:.25}}
+</style>
+<style>
+/* ---- 纸卷出纸口 ---- */
+#tray{margin-top:0;padding:10px 12px 12px;border-radius:10px;flex:1 1 auto;min-height:0;max-height:100%;
+display:flex;flex-direction:column;background:linear-gradient(180deg,#3a4553,#232c36 55%,#161d25);box-shadow:0 3px 10px rgba(0,0,0,.6) inset,0 1px 0 #fff}
+#mouth{height:12px;border-radius:6px;background:linear-gradient(180deg,#000,#39434f);box-shadow:0 2px 4px rgba(0,0,0,.8) inset,0 1px 0 rgba(255,255,255,.3);margin-bottom:6px}
+#roll{background:var(--paper);color:var(--ink);border-radius:3px;padding:10px 12px 14px;flex:1 1 auto;min-height:180px;max-height:calc(100vh - 340px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-gutter:stable;font:12.5px/1.5 Consolas,"Microsoft YaHei",monospace;box-shadow:0 2px 8px rgba(0,0,0,.45);background-image:repeating-linear-gradient(180deg,rgba(0,0,0,.03) 0 1px,transparent 1px 4px);scrollbar-width:thin;scrollbar-color:#8b7f66 #e6dfcd}
+#roll::-webkit-scrollbar{width:13px}
+#roll::-webkit-scrollbar-track{background:#e6dfcd;border-left:1px solid #c9c0ae}
+#roll::-webkit-scrollbar-thumb{min-height:34px;border:3px solid #e6dfcd;border-radius:8px;background:linear-gradient(90deg,#a89b80,#7d7159);box-shadow:0 1px 2px rgba(0,0,0,.35) inset}
+#roll::-webkit-scrollbar-thumb:hover{background:linear-gradient(90deg,#8f8265,#5f5641)}
+
+.ln{margin:0 0 7px;padding-bottom:6px;border-bottom:1px dashed rgba(0,0,0,.18);white-space:pre-wrap;word-break:break-word}
+.ln .who{display:inline-block;font-size:10px;letter-spacing:1px;color:#6b6152;border:1px solid #c9c0ae;border-radius:3px;padding:0 4px;margin-bottom:2px}
+.ln.me .who{color:#2b4a63;border-color:#9db8cd;background:#e3edf6}
+.ln.sys .who{color:#5a4a1c;border-color:#d8c98d;background:#f6efd6}
+.ln.feed{animation:feed .35s ease-out}
+@keyframes feed{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
+#tear{height:14px;margin:8px -12px -6px;background:repeating-linear-gradient(90deg,transparent 0 6px,rgba(0,0,0,.35) 6px 12px);mask:linear-gradient(180deg,#000,transparent)}
+/* ---- 卡纸 JAM ---- */
+.jam{margin:0 0 8px;padding:6px 9px;border-radius:5px;background:linear-gradient(180deg,#ff6b6b,#c81e1e);color:#fff;font-size:12px;letter-spacing:.5px;box-shadow:0 2px 6px rgba(200,30,30,.5),0 1px 0 rgba(255,255,255,.4) inset;animation:feed .3s ease-out}
+.jam b{letter-spacing:2px}
+</style>
+<style>
+/* ---- 控制面板 ---- */
+#panel{display:flex;flex-direction:column;gap:9px}
+.grp{border-radius:9px;padding:8px 9px 9px;background:linear-gradient(180deg,#e3ebf3,#c0cbda 60%,#d9e2eb);border:1px solid var(--edge);box-shadow:0 1px 0 #fff inset,0 -2px 4px rgba(0,0,0,.14) inset}
+.grp>h4{margin:0 0 6px;font-size:11px;letter-spacing:1.5px;color:#33414f;display:flex;align-items:center;gap:6px}
+.grp>h4 s{text-decoration:none;font-weight:400;color:#6b7a89;letter-spacing:0;font-size:10px}
+.keys{display:flex;flex-wrap:wrap;gap:5px}
+#metagrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+#metagrid .key{padding:5px 3px;font-size:11px;min-width:0;letter-spacing:0}
+/* ---- 拨号盘 ---- */
+#dial{display:flex;gap:12px;align-items:flex-end;margin-top:12px;padding:12px 14px;border-radius:12px;background:linear-gradient(180deg,#dfe7ef,#b9c5d4 55%,#d5dee7);border:1px solid var(--edge);box-shadow:0 1px 0 #fff inset,0 -2px 5px rgba(0,0,0,.16) inset}
+#pad{display:grid;grid-template-columns:repeat(4,52px);gap:6px}
+#pad .key{min-width:0;padding:9px 0;font-size:15px;font-weight:600}
+#pad .key small{display:block;font-size:9px;font-weight:400;color:#4c5a68}
+#flow{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#sr{display:none}
+#sr.show{display:flex;gap:8px;align-items:center}
+</style>
+<style>
+/* ---- 抽屉面板 ---- */
+#drawer{margin-top:12px;border-radius:12px;padding:12px 14px;display:none;background:linear-gradient(180deg,#eef3f8,#cfd9e4 60%,#e2eaf2);border:1px solid var(--edge);box-shadow:0 1px 0 #fff inset,0 -2px 5px rgba(0,0,0,.16) inset;color:#1d252e}
+#drawer.show{display:block}
+#drawer h3{margin:0 0 8px;font-size:13px;letter-spacing:1px;color:#16202b;display:flex;gap:8px;align-items:center}
+#drawer h3 .key{margin-left:auto}
+table{width:100%;border-collapse:collapse;font-size:12px;background:rgba(255,255,255,.6)}
+th,td{border:1px solid #a9b6c4;padding:3px 6px;text-align:left;vertical-align:top}
+th{background:#c8d3df;color:#2b3846;font-weight:600}
+input,select,textarea{background:#0e1a20;color:var(--lcdfg);border:1px solid #5b697a;border-radius:6px;padding:5px 7px;font:12px/1.4 Consolas,monospace}
+textarea{width:100%;min-height:190px}
+.fld{display:grid;grid-template-columns:160px 1fr auto;gap:6px;align-items:center;margin:4px 0}
+.fld>span{font-size:12px;color:#33414f;word-break:break-all}
+.hint{font-size:11px;color:#4c5a68}
+.bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0}
+/* ---- 门禁 ---- */
+#gate{max-width:470px;margin:8vh auto;padding:20px 22px 22px}
+#gate h1{margin:0 0 2px;font-size:18px;letter-spacing:3px;color:#16202b;text-shadow:0 1px 0 #fff}
+#gate p{font-size:12px;color:#3c4a59;margin:6px 0}
+#slot{display:flex;gap:8px;align-items:stretch;margin-top:12px}
+#tok{flex:1;min-width:0;padding:10px 12px;border-radius:7px;font:13px Consolas,monospace}
+#eye{min-width:44px}
+@media (max-width:980px){#zones{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;
+grid-template-areas:"tray" "feeder" "panel"}
+#chassis{min-height:0}#roll{min-height:240px;max-height:60vh}}
+@media (max-width:760px){#pad{grid-template-columns:repeat(4,46px)}}
+</style>
+</head>
+<body>
+<!-- ===== 门禁：插令牌 ===== -->
+<div id="gate" class="metal gloss">
+  <span class="screw"></span><span class="screw"></span><span class="screw"></span><span class="screw"></span>
+  <h1>SMS 传真机</h1>
+  <p>本机加密专线 · 仅监听 127.0.0.1（自签证书，首次访问请在浏览器高级里信任指纹 <b id="gfpr">……</b>）。</p>
+  <p>请插入配对令牌（sms-shell 里执行 <code>:web token</code> 取得）：</p>
+  <div id="slot">
+    <input id="tok" type="password" placeholder="配对令牌 TOKEN" autocomplete="off">
+    <button id="eye" class="key sm" title="明文/密文切换" onclick="toggleTok()">👁 明文</button>
+    <button class="key sm" title="复制令牌" onclick="copyTok()">⧉</button>
+  </div>
+  <div class="bar"><button class="key acc wide" onclick="connect()">接 通 线 路</button>
+    <span class="hint">Enter 同效</span></div>
+  <p class="hint" id="gerr" style="color:#a33"></p>
+</div>
+
+<!-- ===== 机身 ===== -->
+<div id="app" style="display:none">
+<div id="chassis" class="metal gloss">
+  <span class="screw"></span><span class="screw"></span><span class="screw"></span><span class="screw"></span>
+  <div class="brand"><b>SMS-FAX · 8737</b><span>SECURE LOOPBACK LINE</span><em id="banner">待机</em></div>
+
+  <div id="zones">
+    <!-- ① 进纸器 -->
+    <section class="zone z-feeder">
+      <h3 class="ztitle">① 进纸器 DOC FEEDER <i>话语 / :元指令</i></h3>
+      <div id="feeder">
+        <div class="lip"></div>
+        <div id="feedrow">
+          <input id="cmd" placeholder="放稿：输入话语，或以 : 开头的元指令 · Tab 补全 · ↑↓ 取历史" autocomplete="off">
+          <button class="key acc" onclick="send()">送稿 FEED</button>
+        </div>
+        <div id="ac"></div>
+      </div>
+      <div class="bar">
+        <button class="key sm" onclick="hist(-1)">▲ 上一稿</button>
+        <button class="key sm" onclick="hist(1)">▼ 下一稿</button>
+        <button class="key sm" onclick="setCmd('')">✕ 退稿</button>
+        <span class="hint">Tab＝补全 · Enter＝送稿</span>
+      </div>
+      <div class="grp"><h4>常用拨号 <s>一键指令</s></h4><div class="keys" id="quick"></div></div>
+    </section>
+
+    <!-- ② 出纸口 -->
+    <section class="zone z-tray">
+      <h3 class="ztitle">② 出纸口 PAPER TRAY <i>接收记录 · 逐行传真扫描</i></h3>
+      <div id="tray"><div id="mouth"></div><div id="roll"></div><div id="tear"></div></div>
+      <div class="bar">
+        <button class="key sm" onclick="copyAll()">⧉ 复制输出</button>
+        <button class="key sm" onclick="dl()">⤓ 下载 .txt</button>
+        <button class="key sm" onclick="tear()">✂ 撕纸清屏</button>
+        <span class="hint">Ctrl+Shift+C 复制全部</span>
+      </div>
+    </section>
+    <!-- ③ 控制面板 -->
+    <section class="zone" id="panel">
+      <h3 class="ztitle">③ 控制面板 CONTROL <i>LCD / 指示灯 / 功能键</i></h3>
+      <div class="lcd"><div id="scr">
+        <div><span class="k">会话</span> <b id="s_sess">-</b> <span class="k">conv</span> <b id="s_conv">-</b></div>
+        <div><span class="k">模式</span> <b id="s_mode">对话</b> <span class="k">网关</span> <b id="s_gw">-</b> <span class="k">模型</span> <b id="s_model">-</b></div>
+        <div><span class="k">令牌</span> <b id="s_tok">-</b> <button class="key sm" style="padding:1px 6px" onclick="revealTok()">👁 显影</button> <button class="key sm" style="padding:1px 6px" onclick="copyTok2()">⧉</button></div>
+        <div><span class="k">指纹</span> <b id="s_fpr">-</b></div>
+        <div><span class="k">任务总览</span> <b id="s_task">无未完成</b></div>
+      </div></div>
+      <div id="leds">
+        <span class="led off" id="led_net"><i></i>线路</span>
+        <span class="led off" id="led_qq"><i></i>QQ</span>
+        <span class="led off" id="led_tts"><i></i>朗读</span>
+        <span class="led off" id="led_dream"><i></i>做梦</span>
+        <span class="led off" id="led_plan"><i></i>计划</span>
+        <span class="led off" id="led_ext"><i></i>对外</span>
+      </div>
+      <div class="grp"><h4>META 元指令 40 键 <s>点击填入送稿口</s></h4><div id="metagrid"></div></div>
+      <div id="f1"></div>
+    </section>
+  </div>
+
+  <!-- ④ 拨号盘 + 走纸控制 -->
+  <div id="dial">
+    <div id="pad"></div>
+    <div class="hint" style="max-width:210px">拨号盘＝快捷指令位（0 空闲 · * 菜单 · # 系统）<br>可在下方「配置」里改绑。</div>
+    <div id="flow">
+      <button class="key sm" onclick="pollAll()">↻ 巡检 ALL</button>
+      <button class="key sm" onclick="speakLast()">🔊 朗读末条</button>
+      <button id="sr" class="key stop" onclick="doStop()">⏸ 停止</button>
+      <button id="sc" class="key go" onclick="doResume()">▶ 继续</button>
+    </div>
+  </div>
+
+  <!-- ⑤ 抽屉面板 -->
+  <div id="drawer">
+    <h3><span id="d_title">面板</span><button class="key sm" onclick="closeDrawer()">✕ 合上</button></h3>
+    <div id="d_body"></div>
+  </div>
+</div>
+</div>
+<script>
+/* ================= SMS 传真机控制台 · 单文件自包含（无 CDN） ================= */
+const NL=String.fromCharCode(10), TAB="  ";
+let T=sessionStorage.getItem("sms_tok")||"";
+let INFO=null, HIST=[], HI=-1, TOKFULL="", MODE="对话", TASKS=null, LAST="";
+const H=()=>({"Content-Type":"application/json","X-SMS-Token":T});
+const $=id=>document.getElementById(id);
+async function api(p,body){let r;
+ try{r=await fetch(p,body?{method:"POST",headers:H(),body:JSON.stringify(body)}:{headers:H()});}
+ catch(e){jam("线路不可达 "+p);return{err:String(e)}}
+ if(r.status===401){sessionStorage.removeItem("sms_tok");location.reload();return{err:"401 令牌失效"}}
+ try{return await r.json()}catch(e){jam("响应非 JSON "+p);return{err:"bad json"}}}
+function esc(s){return String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]))}
+function j(v){try{return JSON.parse(v)}catch(e){return v}}
+/* ---------- 出纸卷 ---------- */
+function print(who,text,cls){const d=document.createElement("div");d.className="ln feed "+(cls||"");
+ d.innerHTML='<span class="who">'+esc(who)+"</span>"+NL+'<div>'+esc(text)+"</div>";
+ $("roll").appendChild(d);$("roll").scrollTop=$("roll").scrollHeight;LAST=text;return d}
+function jam(msg){const d=document.createElement("div");d.className="jam";
+ d.innerHTML="<b>卡纸 JAM</b> · "+esc(msg)+" （已跳过，走纸继续）";
+ $("roll").appendChild(d);$("roll").scrollTop=$("roll").scrollHeight;
+ led("led_net","err");setTimeout(()=>led("led_net",INFO&&INFO.web_shell&&INFO.web_shell.running?"on":"off"),2500)}
+function led(id,st){const e=$(id);if(!e)return;e.className="led "+st}
+function tear(){if(!confirm("撕纸＝清空出纸卷记录？"))return;$("roll").innerHTML="";print("系统","已撕纸，走纸复位","sys")}
+function copyAll(){const t=[...document.querySelectorAll("#roll .ln")].map(n=>n.innerText).join(NL+NL);
+ navigator.clipboard&&navigator.clipboard.writeText(t).then(()=>print("系统","已复制输出 "+t.length+" 字","sys"),()=>jam("剪贴板不可用"))}
+function dl(){const t=[...document.querySelectorAll("#roll .ln")].map(n=>n.innerText).join(NL+NL);
+ const b=new Blob([t],{type:"text/plain;charset=utf-8"}),a=document.createElement("a");
+ a.href=URL.createObjectURL(b);a.download="sms-fax-"+Date.now()+".txt";a.click();print("系统","已下载 "+a.download,"sys")}
+/* ---------- 门禁 ---------- */
+function toggleTok(){const e=$("tok");const p=e.type==="password";e.type=p?"text":"password";
+ $("eye").textContent=p?"🙈 隐藏":"👁 明文";e.focus()}
+function copyTok(){const v=$("tok").value;if(v&&navigator.clipboard)navigator.clipboard.writeText(v)}
+function copyTok2(){if(TOKFULL&&navigator.clipboard)navigator.clipboard.writeText(TOKFULL);else print("系统","先按「显影」取全令牌","sys")}
+async function connect(){T=$("tok").value.trim();if(!T)return;sessionStorage.setItem("sms_tok",T);
+ try{const i=await api("/api/info");if(i.err)throw new Error(i.err);localStorage.setItem("sms_tok",T);boot(i)}
+ catch(e){$("gerr").textContent="接通失败："+(e.err||e.message||e)}}
+function boot(i){INFO=i;$("gate").style.display="none";$("app").style.display="";
+ $("tok").addEventListener("keydown",ev=>{if(ev.key==="Enter")connect()});
+ lcd(i);pollAll();pollSolo();setInterval(pollSolo,15000);setInterval(pollTasks,4000);setInterval(pollAsk,3000)}
+function lcd(i){const g=i.gateway||{};
+ setBanner();
+ $("s_gw").textContent=g.enabled?"on":"off";$("s_model").textContent=g.model||"-";
+ $("s_tok").textContent=i.token_prefix||"-";
+ $("s_fpr").textContent=(i.fingerprint||"-").slice(0,23);
+ $("s_sess").textContent=(i.session||i.conv||"-");
+ $("s_conv").textContent=i.conv_id||i.conv||"-";
+ led("led_net","on");led("led_ext",i.external&&i.external.enabled?"warn":"off");
+ led("led_dream",i.dream&&i.dream.enabled?"on":"off")}
+/* ---------- SOLO 自审模式：主输出窗口（出纸口）提示与风险告知 ---------- */
+let SOLO=null, SOLO_TOLD=false;
+function soloTag(){return (SOLO&&SOLO.enabled)?"SOLO: on":"SOLO: off"}
+function setBanner(){const g=(INFO&&INFO.gateway)||{};
+ $("banner").textContent="网关 "+(g.enabled?"在线":"停用")+" · "+(g.model||"-")+" · "+soloTag()}
+function soloWarn(s){return "【SOLO 模式已开启 · 风险告知】缺权限不再向用户确认，由大模型自审授予并立即执行。\n"
+ +"· 永不自审键（solo.never）："+((s.never||[]).join("、")||"（无）")+"\n"
+ +"· skill 目录写入（danger）自审："+(s.allow_danger?"已开（solo.allow_danger=true，高危）":"未开，仍须当轮 :grant danger")+"\n"
+ +"· 自审授予时长：默认 "+(s.ttl_min||30)+" 分钟，上限 "+(s.max_ttl_min||120)+" 分钟，到期自动失效\n"
+ +"· 每笔自审放行/拒绝都会打到本出纸口，并落 permissions.json 审计（solo 标记）＋event 链，可追溯\n"
+ +"· 关闭：进纸器输入 :solo off（或 F4 改 solo.enabled=false）；单项收回：:grant revoke <键>（注意 :grant <键> 0＝永久授予、非收回）\n"
+ +"如不认可此模式，请立即输入 :solo off"}
+async function pollSolo(){const r=await api("/api/perms");if(r.err)return;
+ const s=r.solo||{enabled:false}, was=SOLO;SOLO=s;setBanner();
+ if(s.enabled&&!SOLO_TOLD){SOLO_TOLD=true;print("系统",soloWarn(s),"sys")}
+ else if(!s.enabled){if(was&&was.enabled)print("系统","SOLO 模式已关闭——权限准入回到用户确认（:grant），与未启用 SOLO 时逐字一致","sys");SOLO_TOLD=false}}
+
+/* ---------- META 40 键 ---------- */
+const META=["agents","use","skill","cmds","intent","index","skills","workspace","debug","mode","dispatch","sh","edit","view","alias","unalias","hud","deploy","qq","session","grant","perms","tools","api","config","web","ext","net","tts","learn","file","path","dream","image","restart","shutdown","repair","show","help","quit"];
+const METAD={agents:"数据流 agent",use:"调用命令",skill:"技能治理",cmds:"命令总表",intent:"意图匹配",index:"文件索引",skills:"技能清单",workspace:"工作区",debug:"调试",mode:"界面模式",dispatch:"技能真派发",sh:"系统 shell",edit:"编辑器",view:"查看器",alias:"自定义指令",unalias:"删自定义",hud:"HUD 叠加",deploy:"部署",qq:"QQ 推送",session:"会话",grant:"权限授予",perms:"权限总览",tools:"工具开关",api:"格式 API",config:"配置",web:"网页壳",ext:"对外端口",net:"网络",tts:"朗读",learn:"学习",file:"文件",path:"按路径加技能",dream:"做梦",image:"图像",restart:"重启 SMS",shutdown:"关闭 SMS",repair:"修复待批",show:"命令详情",help:"速查",quit:"收口退出"};
+function buildMeta(){const g=$("metagrid");g.innerHTML="";
+ META.forEach(m=>{const b=document.createElement("button");b.className="key sm";b.title=":"+m+" — "+METAD[m];
+  b.textContent=":"+m;b.onclick=()=>setCmd(":"+m+" ");g.appendChild(b)})}
+/* ---------- F1 六组 ---------- */
+const F1=[
+["技能与派发",[["#menu_skill","托管技能"],["#menu_skill_index","SKILL.md 索引"],[":dispatch ","技能真派发"],["path:skill","按路径加入"]]],
+["文件·索引·工作区",[["#copy_log","复制输出"],["#detail_win","详细细节"],["#menu_files","文件索引"],["#menu_ws","工作区切换"],["#editor","编辑器"],[" :plan ls","计划任务"]]],
+["配置·权限·工具",[["#config","图形化配置"],["#menu_perms","权限与工具"],[":grant ","授予权限"],[":config status","配置状态"],[":perms","权限总览"],[":tools","工具清单"]]],
+["会话与数据流",[["#menu_mode","界面模式"],[":agents","选择 agent"],[":session new ","新建会话"],[":session list","会话清单"],[":session overview","会话拓扑"],[":session conflicts","仅看冲突"]]],
+["系统",[["#menu_sys","系统 shell"],[":cmds","命令总表"],[":deploy ","部署"],[":api formats","格式 API"],[":dream run","做梦整理"],[":dream status","做梦状态"],[":repair list","修复待批"],[":tts status","朗读状态"],[":restart","重启"],[":shutdown","关机"],[":help","速查"]]],
+["QQ 推送",[["#menu_qq","QQ 状态"],[":qq bind","扫码绑定"],[":qq resume","续绑"],[":qq check","链路自检"],[":qq test","真发测试"],[":qq on","开关＝开"],[":qq off","开关＝关"],[":qq flush","补发积压"],[":qq listen","入站监听"],[":qq unlisten","停监听"],[":qq lstatus","监听判活"],[":qq linbox","入站审计"]]]];
+function buildF1(){const w=$("f1");w.innerHTML="";
+ F1.forEach(([g,items])=>{const d=document.createElement("div");d.className="grp";
+  d.innerHTML="<h4>"+esc(g)+"</h4>";const k=document.createElement("div");k.className="keys";
+  items.forEach(([cmd,label])=>{const b=document.createElement("button");b.className="key sm";b.textContent=label;
+   b.title=cmd.trim();b.onclick=()=>pick(cmd);k.appendChild(b)});
+  d.appendChild(k);w.appendChild(d)})}
+function pick(cmd){cmd=(cmd||"").trim();
+ if(cmd[0]==="#")return act(cmd);
+ if(cmd[0]===":")return setCmd(cmd.endsWith(" ")?cmd:cmd+" ");
+ if(cmd.startsWith("path:"))return openDrawer("按路径加入技能","path");
+ setCmd(cmd+" ")}
+function act(a){switch(a){
+ case"#menu_skill":case"#menu_skill_index":return openDrawer("SKILL.md 技能索引","skills");
+ case"#copy_log":return copyAll();
+ case"#detail_win":return openDrawer("详细细节窗（长输出）","detail");
+ case"#menu_files":return openDrawer("文件索引 · 编辑器","files");
+ case"#editor":return openDrawer("编辑器 / 查看器","files");
+ case"#menu_ws":return openDrawer("工作区切换","ws");
+ case"#config":return openDrawer("图形化配置","config");
+ case"#menu_perms":return openDrawer("权限 · 工具 · HUD","perms");
+ case"#menu_mode":return openDrawer("界面模式（查看/对话/直通）","mode");
+ case"#menu_sys":return openDrawer("系统 shell 联动","sys");
+ case"#menu_qq":return openDrawer("QQ 推送 · 入站监听","qq");
+ case"#stop_task":return doStop();case"#continue_task":return doResume();
+ default:return setCmd(":help ")}}
+function setCmd(t){$("cmd").value=t;$("cmd").focus();$("cmd").setSelectionRange(t.length,t.length)}
+/* ---------- 拨号盘 ---------- */
+const PAD=[["1",":cmds","命令"],["2",":skills","技能"],["3",":session list","会话"],["4",":config status","配置"],["5",":perms","权限"],["6",":hud","HUD"],["7",":dream status","做梦"],["8",":tts status","朗读"],["9",":qq status","QQ"],["*",":help","菜单"],["0",":agents","agent"],["#",":mode","模式"]];
+function buildPad(){const p=$("pad");p.innerHTML="";
+ PAD.forEach(([k,cmd,lab])=>{const b=document.createElement("button");b.className="key";
+  b.innerHTML=k+"<small>"+lab+"</small>";b.title=cmd;b.onclick=()=>{setCmd(cmd+" ");print("拨号","键 "+k+" → "+cmd,"sys")};p.appendChild(b)})}
+const QUICK=[["速查",":help"],["命令表",":cmds"],["技能",":skills"],["派发",":dispatch "],["会话拓扑",":session overview"],["配置",":config status"],["权限",":perms"],["任务总览",":plan ls"],["做梦",":dream status"],["QQ",":qq status"],["朗读",":tts "],["模式",":mode "]];
+function buildQuick(){const q=$("quick");q.innerHTML="";
+ QUICK.forEach(([l,c])=>{const b=document.createElement("button");b.className="key sm";b.textContent=l;b.title=c;
+  b.onclick=()=>setCmd(c);q.appendChild(b)})}
+/* ---------- 送稿 ---------- */
+async function send(){const el=$("cmd");const t=(el.value||"").trim();if(!t)return;
+ el.value="";HI=-1;if(HIST[0]!==t){HIST.unshift(t);HIST=HIST.slice(0,60)}acHide();
+ print("我",t,"me");
+ const r=await api("/api/chat",{text:t});
+ if(r.err)return jam("送稿失败："+r.err);
+ const who=(r.meta&&r.meta.agent)||"sms-shell";
+ const body=(r.lines||[]).join(NL)||"（无输出）";
+ print(who,body);
+ if(r.exit)print("系统","会话已收口 :quit","sys");
+ pollTasks()}
+function hist(d){if(!HIST.length)return;HI=Math.max(-1,Math.min(HIST.length-1,HI+d));
+ $("cmd").value=HI<0?"":HIST[HI]}
+/* ---------- Tab 补全 ---------- */
+let AC=[],ACI=-1;
+function acItems(){const w=($("cmd").value||"").split(/\s+/);const cur=w[w.length-1]||"";
+ const pool=META.map(m=>":"+m).concat(AC);
+ return pool.filter(x=>x.toLowerCase().startsWith(cur.toLowerCase())&&x!==cur).slice(0,24)}
+function acShow(){const it=acItems();const b=$("ac");if(!it.length)return acHide();
+ AC2=it;ACI=-1;b.innerHTML="";it.forEach((x,i)=>{const e=document.createElement("b");
+  e.textContent=x;const d=METAD[x.replace(":","")];if(d)e.innerHTML=x+"<s>"+d+"</s>";
+  e.onclick=()=>{acPick(i)};b.appendChild(e)});b.style.display="block"}
+let AC2=[];
+function acPick(i){const it=AC2[i]||AC2[0];if(!it)return;const w=($("cmd").value||"").split(/\s+/);
+ w[w.length-1]=it;$("cmd").value=w.join(" ")+" ";acHide();$("cmd").focus()}
+function acHide(){$("ac").style.display="none"}
+/* ---------- 键盘 ---------- */
+function keys(){const el=$("cmd");
+ el.addEventListener("keydown",ev=>{
+  if(ev.key==="Tab"){ev.preventDefault();if($("ac").style.display==="block"&&AC2.length){acPick(Math.min(ACI+1,AC2.length-1))}else acShow();return}
+  if(ev.key==="Escape")return acHide();
+  if(ev.key==="ArrowDown"&&$("ac").style.display==="block"){ev.preventDefault();ACI=Math.min(ACI+1,AC2.length-1);paintAC();return}
+  if(ev.key==="ArrowUp"&&$("ac").style.display==="block"){ev.preventDefault();ACI=Math.max(0,ACI-1);paintAC();return}
+  if(ev.key==="Enter"){ev.preventDefault();return send()}
+ });
+ el.addEventListener("input",()=>{if(($("cmd").value||"").startsWith(":"))acShow();else acHide()});
+ document.addEventListener("keydown",ev=>{
+  if(ev.ctrlKey&&ev.shiftKey&&ev.key.toLowerCase()==="c"){ev.preventDefault();copyAll()}
+  if(ev.key==="/"&&!/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)){ev.preventDefault();$("cmd").focus();setCmd("/")}})}
+function paintAC(){[...$("ac").children].forEach((e,i)=>e.className=i===ACI?"sel":"")}
+/* ---------- 任务总览 / 走纸控制 ---------- */
+function isDone(x){const v=String(x&&x.status||"").toLowerCase();return v==="done"||v==="完成"||v==="finished"}
+async function pollTasks(){const r=await api("/api/tasks");
+ if(r.err){$("s_task").textContent="巡检不可用";return}
+ const rows=r.rows||r.tasks||r||[];const arr=Array.isArray(rows)?rows:(rows.rows||[]);
+ const done=arr.filter(x=>isDone(x)).length;
+ const tot=arr.length;const un=tot-done;
+ TASKS=arr;
+ if(!tot||un<=0){$("sr").className="";$("sc").className="";$("s_task").textContent="无未完成";return}
+ $("sr").className="show";$("sc").className="show";
+ $("sr").textContent="⏸ 停止 "+done+"/"+tot;$("sc").textContent="▶ 继续 "+done+"/"+tot;
+ $("s_task").textContent=done+"/"+tot+" 进行中";
+ led("led_plan","warn")}
+async function doStop(){const r=await api("/api/stop",{});
+ print("系统",r.err?("停止请求受阻："+r.err):"已发出停止请求（stop_channel）","sys");pollTasks()}
+async function doResume(){const r=await api("/api/resume",{});
+ print("系统",r.err?("续跑受阻："+r.err):"已请求续跑未完成计划表","sys");pollTasks()}
+/* ---------- 模型提问（ask_channel）：LCD + 朗读 ---------- */
+let ASKSEEN={};
+async function pollAsk(){const r=await api("/api/ask");if(r.err)return;
+ const q=r.questions||r.items||(r.text?[r]:[]);
+ (Array.isArray(q)?q:[]).forEach(x=>{const id=x.id||x.q||JSON.stringify(x);if(ASKSEEN[id])return;ASKSEEN[id]=1;
+  const t=(x.text||x.q||"").trim();if(!t)return;print("模型提问",t+(x.options?"（可选："+x.options.join(" / ")+"）":""),"sys");
+  $("s_mode").textContent="待答";say(t)})}
+async function say(t){const r=await api("/api/tts/say",{text:t});led("led_tts",r.err?"off":"on")}
+async function speakLast(){if(!LAST)return print("系统","暂无可朗读内容","sys");say(LAST);print("系统","已送朗读队列","sys")}
+/* ---------- 抽屉 ---------- */
+let DOPEN="";
+function closeDrawer(){$("drawer").className="";DOPEN=""}
+async function openDrawer(title,kind){$("d_title").textContent=title;$("drawer").className="show";DOPEN=kind;
+ const b=$("d_body");b.innerHTML="<div class='hint'>读取中…</div>";
+ const f=DF[kind];if(!f)return b.innerHTML="<div class='hint'>无此面板</div>";
+ try{await f(b)}catch(e){b.innerHTML="<div class='hint'>面板数据不可用："+esc(e&&e.message||e)+"</div>";jam("面板 "+kind+" 数据不可用")}}
+async function refreshDrawer(){if(DOPEN)openDrawer($("d_title").textContent,DOPEN)}
+const DF={};
+/* ---------- 巡检 ---------- */
+async function pollAll(){await Promise.all([pollTasks(),pollQQ(),pollTTS(),pollDream(),pollSolo()]);
+ print("系统","巡检完成：线路 "+(INFO?"已连通":"未连")+" · 任务总览 "+(TASKS?TASKS.length:0)+" 行","sys")}
+async function pollQQ(){const r=await api("/api/qq");led("led_qq",r.err?"off":(r.enabled?"on":"off"))}
+async function pollTTS(){const r=await api("/api/tts");led("led_tts",r.err?"off":(r.enabled?"on":"off"))}
+async function pollDream(){const r=await api("/api/info");if(!r.err){INFO=r;led("led_dream",r.dream&&r.dream.enabled?"on":"off")}}
+/* ---------- 面板：网关配置 ---------- */
+async function set(p,v){const r=await api("/api/config",{path:p,value:typeof v==="string"?j(v):v});
+ print("配置",p+" → "+JSON.stringify(r.ok!==undefined?r.ok:r.err),r.err?"sys":"sys");if(r.err)jam("配置写入失败 "+p);return r}
+function kv(b,list){list.forEach(([p,l,v,t])=>{const d=document.createElement("div");d.className="fld";
+ const inp=t==="bool"?'<input type="checkbox" '+(v?"checked":"")+" style='width:auto'>":"<input value='"+esc(v==null?"":v)+"'>";
+ d.innerHTML="<span>"+esc(l)+"</span>"+inp+"<button class='key sm'>存</button>";
+ const el=d.querySelector("input");
+ d.querySelector("button").onclick=()=>set(p,t==="bool"?el.checked:j(el.value));b.appendChild(d)})}
+DF.config=async b=>{b.innerHTML="";const i=INFO||await api("/api/info");const g=i.gateway||{};
+ const h=document.createElement("h3");h.textContent="llm_gateway";b.appendChild(h);
+ kv(b,[["llm_gateway.enabled","启用",g.enabled,"bool"],["llm_gateway.base_url","基础 URL",g.base_url],
+  ["llm_gateway.model","模型",g.model],["llm_gateway.max_tokens","max_tokens",g.max_tokens],
+  ["llm_gateway.temperature","temperature",g.temperature],["llm_gateway.top_p","top_p",g.top_p],
+  ["llm_gateway.api_key","api_key（写覆盖）",""]]);
+ const h2=document.createElement("h3");h2.textContent="做梦机制";h2.style.marginTop="12px";b.appendChild(h2);
+ kv(b,[["dream.enabled","启用",i.dream&&i.dream.enabled,"bool"],["dream.interval_min","间隔（分钟）",i.dream&&i.dream.interval_min]]);
+ const h4=document.createElement("h3");h4.textContent="网页端 web_shell";h4.style.marginTop="12px";b.appendChild(h4);
+ const w=i.web_shell||{};
+ kv(b,[["web_shell.enabled","启用网页端",(w.enabled===undefined?true:w.enabled),"bool"],["web_shell.port","端口",w.port]]);
+ const wb=document.createElement("div");wb.className="bar";
+ wb.innerHTML="<span class='hint'>入口 https://"+esc(w.host||"127.0.0.1")+":"+esc(w.port||8737)+"/ · "+esc(w.running?("运行中 pid "+w.running):"未运行")+"</span>"
+ +"<button class='key sm' data-c=':web start'>开启</button><button class='key sm warn' data-c=':web stop'>关闭</button><button class='key sm' data-c=':web token'>密钥</button>";
+ b.appendChild(wb);wb.querySelectorAll("[data-c]").forEach(e=>e.onclick=()=>setCmd(e.dataset.c));
+ const bar=document.createElement("div");bar.className="bar";
+ bar.innerHTML="<button class='key sm' data-c=':dream run'>做梦整理</button><button class='key sm' data-c=':dream status'>做梦状态</button><button class='key sm' data-c=':repair list'>修复待批</button>";
+ b.appendChild(bar);bar.querySelectorAll("[data-c]").forEach(e=>e.onclick=()=>setCmd(e.dataset.c));
+ const t=document.createElement("table");t.innerHTML="<tr><th>链</th><th>启用</th><th>合并阈值</th><th>修剪天</th><th>最低频次</th><th></th></tr>";
+ Object.entries(i.chains||{}).forEach(([c,v])=>{const r=document.createElement("tr");
+  r.innerHTML="<td>"+esc(c)+"</td><td><input type='checkbox' "+(v.enabled?"checked":"")+" style='width:auto'></td><td><input value='"+v.merge_thr+"' size=4></td><td><input value='"+v.prune_days+"' size=3></td><td><input value='"+v.min_freq+"' size=3></td><td><button class='key sm'>存</button></td>";
+  r.querySelector("button").onclick=()=>set("chains."+c,{enabled:r.children[1].firstChild.checked,merge_thr:j(r.children[2].firstChild.value),prune_days:j(r.children[3].firstChild.value),min_freq:j(r.children[4].firstChild.value)});
+  t.appendChild(r)});
+ const h3=document.createElement("h3");h3.textContent="链设置";h3.style.marginTop="12px";b.appendChild(h3);b.appendChild(t)};
+/* ---------- 面板：上游模型元数据 / 网络 ---------- */
+function mtable(b,ms){const t=document.createElement("table");
+ t.innerHTML="<tr><th>模型</th><th>上下文</th><th>输出</th><th>RPM</th><th>TPM</th><th>源</th></tr>";
+ Object.entries(ms||{}).slice(0,60).forEach(([k,v])=>{const r=document.createElement("tr");
+  r.innerHTML="<td>"+esc(k)+"</td><td>"+esc(v.context||v.ctx||"-")+"</td><td>"+esc(v.max_output||v.output||"-")+"</td><td>"+esc(v.rpm||"-")+"</td><td>"+esc(v.tpm||"-")+"</td><td>"+esc(v.source||v.src||"-")+"</td>";
+  r.style.cursor="pointer";r.onclick=()=>setCmd(":config set llm_gateway.model="+k);
+  t.appendChild(r)});b.appendChild(t)}
+DF.models=async b=>{b.innerHTML="<div class='bar'><button class='key sm' id='rf'>refresh 抓取 Token/上下文/RPM</button><span class='hint' id='mts'></span></div>";
+ b.querySelector("#rf").onclick=async()=>{b.querySelector("#mts").textContent="抓取中…";
+  const r=await api("/api/models/refresh",{});b.querySelector("#mts").textContent=r.err?("err:"+r.err):("模型 "+Object.keys(r.models||{}).length);
+  if(r.err)jam("模型抓取失败");const old=b.querySelector("table");if(old)old.remove();mtable(b,r.models)};
+ const mm=(INFO||{}).model_meta||{};
+ const s=document.createElement("div");s.className="hint";
+ s.textContent="上次抓取 "+(mm.ts||"无")+" · 模型数 "+(mm.count||0)+" · 当前 "+JSON.stringify(mm.current||{});b.appendChild(s);
+ mtable(b,mm.models_cache||{})};
+DF.net=async b=>{const i=INFO||await api("/api/info");const w=i.web_shell||{},e=i.external||{};
+ b.innerHTML="<div class='hint'>网页壳："+esc(w.running?("运行中 pid "+w.running):"未运行")+" · 本机入口 "+esc(w.url||"https://127.0.0.1:8737")+"（仅回环 127.0.0.1，不暴露公网）</div>"
+ +"<div class='hint'>对外端口："+esc(e.running?("运行中 pid "+e.running):"关闭")+" · 后端 "+esc(e.backend||"-")+" · 端口 "+esc(e.port||"-")+" · interface "+esc(e.interface||"-")+"</div>"
+ +"<div class='bar'><button class='key sm' id='rot'>轮换 token</button><button class='key sm warn' id='ext'>开启对外端口（危险·需确认）</button></div>"
+ +"<div class='fld'><span>会话 TTL（分钟）</span><input id='tl' value='"+esc(e.session_ttl_min||"")+"'><button class='key sm' id='tlb'>存</button></div>"
+ +"<div class='fld'><span>pq_mode</span><select id='pq'><option>auto</option><option>strict</option><option>classic</option></select><button class='key sm' id='pqb'>存</button></div>"
+ +"<div class='hint'>enroll 本地批准：python -B skill/scripts/external.py enroll &lt;pub_b64&gt; [note] [ttl]；隧道指引 :ext tunnel</div>";
+ if(e.pq_mode)b.querySelector("#pq").value=e.pq_mode;
+ b.querySelector("#rot").onclick=async()=>{const r=await api("/api/token/rotate",{});
+  if(r.token){T=r.token;sessionStorage.setItem("sms_tok",T);localStorage.setItem("sms_tok",T);print("系统","token 已轮换（旧 token 即刻失效）","sys")}else jam("轮换失败")};
+ b.querySelector("#ext").onclick=async()=>{if(!confirm("开启对外端口＝向网络暴露本机 SMS 会话通道（仅 /api/chat＋PQ 指纹验签＋限速），确认？"))return;
+  const r=await api("/api/config",{path:"external.enabled",value:true,confirm:"yes"});
+  print("系统","对外端口 → "+JSON.stringify(r.ok!==undefined?r.ok:r.err),"sys")};
+ b.querySelector("#tlb").onclick=()=>set("external.session_ttl_min",j(b.querySelector("#tl").value));
+ b.querySelector("#pqb").onclick=()=>set("external.pq_mode",b.querySelector("#pq").value)};
+/* ---------- 面板：SKILL.md 技能索引 ---------- */
+DF.skills=async b=>{const r=await api("/api/skills");
+ if(r.err){b.innerHTML="<div class='hint'>技能索引不可用："+esc(r.err)+"</div>";return jam("技能索引不可用")}
+ const raw=r.skills||r.items||r.list||[];
+ const arr=Array.isArray(raw)?raw:Object.keys(raw).map(k=>Object.assign({id:k},raw[k]));
+ b.innerHTML="<div class='hint'>活跃技能 "+arr.length+" 个 · 点行＝把 :dispatch 填入送稿口</div>";
+ const t=document.createElement("table");t.innerHTML="<tr><th>技能 id</th><th>介绍</th><th>SKILL.md 路径</th></tr>";
+ arr.forEach(s=>{const id=s.id||s.skill_id||s.name||"-";const tr=document.createElement("tr");
+  tr.innerHTML="<td>"+esc(id)+"</td><td>"+esc(String(s.desc||s.description||"").slice(0,180))+"</td><td><span style='font-size:11px'>"+esc(s.path||s.skill_md||"-")+"</span></td>";
+  tr.style.cursor="pointer";tr.onclick=()=>setCmd(":dispatch "+id+" ");t.appendChild(tr)});
+ b.appendChild(t)};
+/* ---------- 面板：文件索引 + 编辑器 ---------- */
+DF.files=async b=>{const ws=(INFO||{}).workspace||"";
+ b.innerHTML="<div class='bar'><input id='wsq' placeholder='工作区路径（留空＝当前）' value='"+esc(typeof ws==="string"?ws:"")+"'>"
+ +"<button class='key sm' id='ls'>列目录</button><button class='key sm' id='idx'>:index 重建索引</button></div><div id='fl'></div>"
+ +"<div class='fld'><span>打开路径</span><input id='fp' placeholder='绝对或相对路径'><button class='key sm' id='op'>读取</button></div>"
+ +"<textarea id='ed' placeholder='文件内容 · 编辑后保存写回 /api/file/save'></textarea>"
+ +"<div class='bar'><button class='key sm acc' id='sv'>保存（覆盖写需确认）</button><span class='hint'>Ctrl+S 同效</span></div>";
+ b.querySelector("#idx").onclick=()=>setCmd(":index ");
+ b.querySelector("#ls").onclick=async()=>{const r=await api("/api/files?ws="+encodeURIComponent(b.querySelector("#wsq").value||""));
+  const d=b.querySelector("#fl");
+  if(r.err){d.innerHTML="<div class='hint'>读取失败："+esc(r.err)+"</div>";return jam("文件清单不可用")}
+  const fs=r.files||r.items||r.list||[];
+  d.innerHTML="<div class='hint'>"+fs.length+" 项 · 点「打开」进编辑器</div>";
+  const t=document.createElement("table");t.innerHTML="<tr><th>名称</th><th>大小</th><th></th></tr>";
+  fs.slice(0,300).forEach(f=>{const nm=f.name||f.path||String(f);const tr=document.createElement("tr");
+   tr.innerHTML="<td>"+esc(nm)+"</td><td>"+esc(f.size==null?"-":f.size)+"</td><td><button class='key sm'>打开</button></td>";
+   tr.querySelector("button").onclick=()=>{b.querySelector("#fp").value=f.path||nm;b.querySelector("#op").click()};
+   t.appendChild(tr)});
+  d.appendChild(t)};
+ b.querySelector("#op").onclick=async()=>{const p=b.querySelector("#fp").value.trim();if(!p)return;
+  const r=await api("/api/file?path="+encodeURIComponent(p));
+  if(r.err){print("文件",p+" 读取失败："+r.err,"sys");return jam("文件读取失败")}
+  b.querySelector("#ed").value=r.content||r.text||JSON.stringify(r,null,2);
+  print("文件","已载入 "+p+"（"+String(r.content||"").length+" 字）","sys")};
+ b.querySelector("#sv").onclick=()=>saveFile(b);
+ b.querySelector("#ed").addEventListener("keydown",e=>{if(e.ctrlKey&&e.key.toLowerCase()==="s"){e.preventDefault();saveFile(b)}})};
+async function saveFile(b){const p=b.querySelector("#fp").value.trim();if(!p)return print("文件","先填路径","sys");
+ if(!confirm("确认覆盖写 "+p+" ？"))return;
+ const r=await api("/api/file/save",{path:p,content:b.querySelector("#ed").value});
+ print("文件",r.err?("保存失败："+r.err):("已保存 "+p),"sys");if(r.err)jam("文件保存失败")}
+/* ---------- 面板：工作区切换 ---------- */
+DF.ws=async b=>{const r=await api("/api/info");const cur=(r.workspace||"");
+ b.innerHTML="<div class='hint'>当前工作区："+esc(typeof cur==="string"?cur:JSON.stringify(cur))+"</div>"
+ +"<div class='fld'><span>切换 / 添加路径</span><input id='wp' placeholder='目录绝对路径'><button class='key sm' id='wb'>执行</button></div>"
+ +"<div class='hint'>等价指令：:workspace &lt;路径&gt;（即时生效）· :workspace list · :path &lt;路径&gt;</div>";
+ b.querySelector("#wb").onclick=()=>{const v=b.querySelector("#wp").value.trim();if(v)setCmd(":workspace "+v)}};
+/* ---------- 面板：会话拓扑 ---------- */
+DF.sessions=async b=>{const r=await api("/api/sessions");
+ if(r.err){b.innerHTML="<div class='hint'>会话数据不可用："+esc(r.err)+"</div>";return jam("会话拓扑不可用")}
+ const ss=r.sessions||r.items||r.list||[];
+ b.innerHTML="<div class='hint'>session "+ss.length+" 个（通道 client/web/remote/cron/bg·每通道各占 session·session 下挂多 conv）· 未完成行＝跨会话冲突（对等监视）· 接续：:session use &lt;id&gt;</div>";
+ const t=document.createElement("table");t.innerHTML="<tr><th>id</th><th>通道</th><th>conv</th><th>创建</th><th>未完成</th><th>当前</th><th></th></tr>";
+ (Array.isArray(ss)?ss:Object.keys(ss).map(k=>Object.assign({id:k},ss[k]))).forEach(s=>{const tr=document.createElement("tr");
+  const un=s.unfinished==null?(s.rows?Object.keys(s.rows).filter(x=>s.rows[x].status!=="done").length:0):s.unfinished;
+  tr.innerHTML="<td>"+esc(s.id||s.session||"-")+"</td><td>"+esc(s.kind||"shell")+"</td><td title='"+esc((s.convs||[]).join(" "))+"'>"+esc(s.conv_count!=null?s.conv_count:(s.convs||[]).length)+"</td><td>"+esc(s.created||s.at||"-")+"</td><td>"+esc(un)+"</td><td>"+esc(s.current?"●":"")+"</td><td><button class='key sm'>接续</button></td>";
+  tr.querySelector("button").onclick=()=>setCmd(":session use "+(s.id||s.session||""));t.appendChild(tr)});
+ b.appendChild(t);
+ const bar=document.createElement("div");bar.className="bar";
+ [["新建会话",":session new "],["清单",":session list"],["仅看冲突",":session conflicts"]].forEach(([l,c])=>{
+  const x=document.createElement("button");x.className="key sm";x.textContent=l;x.onclick=()=>setCmd(c);bar.appendChild(x)});
+ b.appendChild(bar)};
+/* ---------- 面板：任务总览（前台/后台） ---------- */
+DF.tasks=async b=>{const r=await api("/api/tasks");
+ if(r.err){b.innerHTML="<div class='hint'>任务总览不可用："+esc(r.err)+"</div>";return jam("任务总览不可用")}
+ const rows=r.rows||r.tasks||r.items||[];const done=rows.filter(x=>x.status==="done").length;
+ b.innerHTML="<div class='hint'>任务总览 "+esc(r.tid||r.id||"")+" · 进度 "+done+"/"+rows.length+" · 剩余约 "+esc(r.eta||"-")+"</div>";
+ const t=document.createElement("table");t.innerHTML="<tr><th>行</th><th>步骤</th><th>状态</th><th>通道</th><th>技能</th><th></th></tr>";
+ rows.forEach(x=>{const tr=document.createElement("tr");
+  tr.innerHTML="<td>"+esc(x.id||x.row||"-")+"</td><td>"+esc(x.title||x.step||x.text||"-")+"</td><td>"+esc(x.status||"-")+"</td><td>"+esc(x.lane||"fg")+"</td><td>"+esc(x.skill||"-")+"</td><td></td>";
+  const td=tr.lastChild;
+  ["done","running","pending"].forEach(st=>{const y=document.createElement("button");y.className="key sm";y.textContent=st;
+   y.onclick=async()=>{const q=await api("/api/task/status",{row:x.id||x.row,status:st});
+    print("任务总览",(x.id||x.row)+" → "+st+(q.err?"（"+q.err+"）":""),"sys");pollTasks()};td.appendChild(y)});
+  const lb=document.createElement("button");lb.className="key sm";lb.textContent=(x.lane==="bg"?"转前台":"转后台");
+  lb.onclick=async()=>{const q=await api("/api/task/status",{row:x.id||x.row,lane:x.lane==="bg"?"fg":"bg"});
+   print("任务总览",(x.id||x.row)+" lane → "+(x.lane==="bg"?"fg":"bg")+(q.err?"（"+q.err+"）":""),"sys");DF.tasks(b)};
+  td.appendChild(lb);t.appendChild(tr)});
+ b.appendChild(t)};
+/* ---------- 面板：计划任务 ---------- */
+DF.plans=async b=>{const r=await api("/api/plans");
+ if(r.err){b.innerHTML="<div class='hint'>计划任务不可用："+esc(r.err)+"</div>";return jam("计划任务不可用")}
+ const ps=r.plans||r.items||r.tasks||[];
+ b.innerHTML="<div class='hint'>到点自动执行 "+ps.length+" 条 · 登记：:plan add</div>"
+ +"<div class='fld'><span>新计划（表达式 + 指令）</span><input id='pt' placeholder='如 5m :dream run'><button class='key sm' id='pa'>登记</button></div>"
+ +"<div id='pl'></div>";
+ b.querySelector("#pa").onclick=async()=>{const v=b.querySelector("#pt").value.trim();if(!v)return;
+  const q=await api("/api/plan/add",{spec:v});print("计划",q.err?("登记失败："+q.err):("已登记 "+v),"sys");if(!q.err)refreshDrawer()};
+ const t=document.createElement("table");t.innerHTML="<tr><th>id</th><th>时间/表达式</th><th>指令</th><th>状态</th><th></th></tr>";
+ (Array.isArray(ps)?ps:Object.keys(ps).map(k=>Object.assign({id:k},ps[k]))).forEach(x=>{const tr=document.createElement("tr");
+  tr.innerHTML="<td>"+esc(x.id||"-")+"</td><td>"+esc(x.at||x.spec||x.when||"-")+"</td><td>"+esc(x.cmd||x.text||"-")+"</td><td>"+esc(x.status||"待跑")+"</td><td></td>";
+  const td=tr.lastChild;
+  [["暂停","pause"],["立即跑","run"]].forEach(([l,op])=>{const y=document.createElement("button");y.className="key sm";y.textContent=l;
+   y.onclick=async()=>{const q=await api("/api/plan/"+op,{id:x.id});print("计划",l+" "+x.id+(q.err?"（"+q.err+"）":""),"sys");refreshDrawer()};td.appendChild(y)});
+  t.appendChild(tr)});
+ b.querySelector("#pl").appendChild(t)};
+/* ---------- 面板：权限 / 工具 / HUD ---------- */
+DF.perms=async b=>{const r=await api("/api/perms");
+ if(r.err){b.innerHTML="<div class='hint'>权限数据不可用："+esc(r.err)+"</div>";return jam("权限面板不可用")}
+ b.innerHTML="<div class='fld'><span>授予权限</span><input id='gk' placeholder='键或角色，如 network / danger'><button class='key sm' id='gb'>授予</button></div><div id='pbody'></div>";
+ b.querySelector("#gb").onclick=async()=>{const v=b.querySelector("#gk").value.trim();if(!v)return;
+  if(v==="danger"&&!confirm("danger＝允许写 skill 目录／收编工作区文件，确认授予？"))return;
+  const q=await api("/api/grant",{key:v});print("权限",q.err?("授予失败："+q.err):("已授予 "+v),"sys");refreshDrawer()};
+ const box=b.querySelector("#pbody");
+ const rows=r.perms||r.items||r.grants||[];
+ const t=document.createElement("table");t.innerHTML="<tr><th>权限项</th><th>状态</th><th>说明</th></tr>";
+ (Array.isArray(rows)?rows:Object.keys(rows).map(k=>Object.assign({name:k},rows[k]))).forEach(x=>{const tr=document.createElement("tr");
+  const on=x.on===true||x.granted===true||x.status==="on"||x.enabled===true;
+  tr.innerHTML="<td>"+esc(x.name||x.key||"-")+"</td><td>"+(on?"<b style='color:#0a7d3c'>已开</b>":"关")+"</td><td>"+esc(x.desc||x.note||"")+"</td>";
+  t.appendChild(tr)});box.appendChild(t);
+ const h3=document.createElement("h3");h3.textContent="大模型工具开关";h3.style.marginTop="12px";box.appendChild(h3);
+ const tt=document.createElement("table");tt.innerHTML="<tr><th>工具</th><th>启用</th><th>切换</th></tr>";
+ (r.tools||[]).forEach(x=>{const tr=document.createElement("tr");const nm=x.name||x.tool||"-";
+  tr.innerHTML="<td>"+esc(nm)+"</td><td>"+esc(x.enabled?"on":"off")+"</td><td></td>";
+  const y=document.createElement("button");y.className="key sm";y.textContent=x.enabled?"关闭":"开启";
+  y.onclick=async()=>{const q=await api("/api/grant",{tool:nm,on:!x.enabled});print("工具",nm+" → "+(x.enabled?"off":"on")+(q.err?"（"+q.err+"）":""),"sys");refreshDrawer()};
+  tr.lastChild.appendChild(y);tt.appendChild(tr)});box.appendChild(tt);
+   const hs=document.createElement("h3");hs.textContent="SOLO 自审模式";hs.style.marginTop="12px";box.appendChild(hs);
+  const sv=r.solo||{enabled:false};
+  const sp=document.createElement("div");sp.className="hint";
+  sp.textContent="当前："+(sv.enabled?"已开启——缺权限不再向用户确认，由大模型自审授予并立即执行（高危）":"关闭——权限走 :grant 用户确认")
+   +" · danger 自审："+(sv.allow_danger?"开":"关")+" · 永不自审："+((sv.never||[]).join("、")||"-")
+   +" · ttl "+(sv.ttl_min||30)+"分（上限 "+(sv.max_ttl_min||120)+"分） · 今日自审授予 "+(sv.granted_today||0)+" 笔";
+  box.appendChild(sp);
+  const sbb=document.createElement("div");sbb.className="bar";
+  [["开启 SOLO",true],["关闭 SOLO",false]].forEach(function(x){const y=document.createElement("button");
+   y.className="key sm"+(x[1]?" warn":"");y.textContent=x[0];
+   y.onclick=async()=>{if(x[1]&&!confirm("SOLO 开启后缺权限不再询问用户，由大模型自审即授予并立即执行（danger 默认仍不自审）。确认开启？"))return;
+    const q=await api("/api/config",{path:"solo.enabled",value:x[1]});
+    if(q.err)print("SOLO","设置失败："+q.err,"sys");
+    else{SOLO_TOLD=false;print("SOLO",x[1]?"已开启——风险须知见出纸口":"已关闭——权限准入回到用户确认（:grant）","sys");await pollSolo()}
+    refreshDrawer()};sbb.appendChild(y)});
+  box.appendChild(sbb);
+const h4=document.createElement("h3");h4.textContent="HUD 叠加";h4.style.marginTop="12px";box.appendChild(h4);
+ const hd=await api("/api/hud");const pre=document.createElement("pre");
+ pre.style.cssText="background:#0e1a20;color:#3ff0d6;padding:8px;border-radius:7px;font-size:11px;white-space:pre-wrap";
+ pre.textContent=hd.err?"HUD 不可用："+hd.err:JSON.stringify(hd,null,2);box.appendChild(pre)};
+/* ---------- 面板：详细细节窗（F9 等价） ---------- */
+DF.detail=async b=>{const r=await api("/api/detail");
+ b.innerHTML="<div class='bar'><button class='key sm' id='rr'>↻ 重取</button><span class='hint'>长输出原文 · shell/detail.json</span></div><pre id='dp'></pre>";
+ const pre=b.querySelector("#dp");
+ pre.style.cssText="background:#0e1a20;color:#3ff0d6;padding:10px;border-radius:8px;font:12px/1.5 Consolas,monospace;white-space:pre-wrap;max-height:50vh;overflow:auto";
+ pre.textContent=r.err?("细节不可用："+r.err):(r.text||r.detail||JSON.stringify(r,null,2));
+ b.querySelector("#rr").onclick=()=>DF.detail(b)};
+/* ---------- 面板：界面模式 ---------- */
+DF.mode=async b=>{b.innerHTML="<div class='hint'>查看＝只读 · 对话＝默认（话语走数据流）· 直通＝系统 shell（! 同义）</div><div class='keys' id='mk'></div>";
+ const cur=MODE;
+ [["查看","view"],["对话","chat"],["直通","raw"]].forEach(([l,v])=>{const x=document.createElement("button");
+  x.className="key"+(cur===l?" on":"");x.textContent=l;x.onclick=async()=>{MODE=l;$("s_mode").textContent=l;
+   const q=await api("/api/config",{path:"shell.mode",value:v});print("模式",l+" → "+JSON.stringify(q.ok!==undefined?q.ok:q.err),"sys");
+   if(q.err)jam("模式切换失败");DF.mode(b)};b.querySelector("#mk").appendChild(x)})};
+/* ---------- 面板：QQ 推送 + 入站监听 ---------- */
+DF.qq=async b=>{const r=await api("/api/qq");
+ if(r.err){b.innerHTML="<div class='hint'>QQ 状态不可用（后端未接 /api/qq）："+esc(r.err)+"</div>";led("led_qq","off");return jam("QQ 状态不可用")}
+ led("led_qq",r.enabled?"on":"off");
+ b.innerHTML="<div class='hint'>开关 "+esc(r.enabled?"开":"关")+" · 今日已推 "+esc(r.sent_today==null?"-":r.sent_today)+" · outbox 积压 "+esc(r.outbox==null?"-":r.outbox)+" · 凭据 "+esc(r.has_creds?"已配":"未配")+"</div>"
+ +"<div class='hint'>绑定："+esc(r.bound?"已绑定 openid "+String(r.openid||"").slice(0,12):"未绑定（扫码约 2 分钟过期·自动 3 轮换码）")+"</div>"
+ +"<div class='keys' id='qk'></div>"
+ +"<div class='fld'><span>手工录入凭据</span><input id='qc' placeholder='--appid X --secret Y --openid Z'><button class='key sm' id='qb'>填入送稿口</button></div>"
+ +"<div class='bar'><input id='qi' placeholder='测试图片路径'><button class='key sm' id='qib'>发图 /api/qq/img</button></div>"
+ +"<div class='hint'>入站监听："+esc(r.listening?("运行中 pid "+r.listening):"未启动")+" · 判活 "+esc(r.alive||"-")+"</div>";
+ const Q=[["状态",":qq status"],["扫码绑定",":qq bind"],["续绑",":qq resume"],["链路自检",":qq check"],["开关＝开",":qq on"],["开关＝关",":qq off"],
+  ["补发积压",":qq flush"],["开放平台",":qq open"],["启动入站监听",":qq listen"],["停止入站监听",":qq unlisten"],["监听判活",":qq lstatus"],["入站审计",":qq linbox"]];
+ Q.forEach(([l,c])=>{const x=document.createElement("button");x.className="key sm";x.textContent=l;x.title=c;
+  x.onclick=()=>setCmd(c);b.querySelector("#qk").appendChild(x)});
+ b.querySelector("#qb").onclick=()=>setCmd(":qq "+b.querySelector("#qc").value.trim());
+ b.querySelector("#qib").onclick=async()=>{const p=b.querySelector("#qi").value.trim();
+  const q=await api("/api/qq/img",{path:p});print("QQ",q.err?("发图失败："+q.err):("已排队发图 "+p),"sys");if(q.err)jam("QQ 发图失败")}};
+/* ---------- 面板：系统 shell / 命令总表 ---------- */
+DF.sys=async b=>{b.innerHTML="<div class='hint'>系统 shell 联动（powershell/bash/zsh · ! 前缀）· 命令总表来自 /api/commands</div><div class='keys' id='sk'></div><div id='cmdbox'></div>";
+ [["shell 清单",":sh list"],["部署",":deploy "],["格式 API",":api formats"],["重启 SMS",":restart"],["关闭 SMS",":shutdown"],["速查",":help"]].forEach(([l,c])=>{
+  const x=document.createElement("button");x.className="key sm";x.textContent=l;x.onclick=()=>setCmd(c);b.querySelector("#sk").appendChild(x)});
+ const r=await api("/api/commands");if(r.err)return jam("命令总表不可用");
+ const list=r.commands||r.items||[];const t=document.createElement("table");
+ t.innerHTML="<tr><th>命令</th><th>介绍</th><th>来源</th></tr>";
+ (Array.isArray(list)?list:[]).slice(0,200).forEach(c=>{const tr=document.createElement("tr");
+  tr.innerHTML="<td>:"+esc(c.name||"-")+"</td><td>"+esc(String(c.description||c.desc||"").slice(0,150))+"</td><td>"+esc(c.source||c.kind||"")+"</td>";
+  tr.style.cursor="pointer";tr.onclick=()=>setCmd(":"+(c.name||"")+" ");t.appendChild(tr)});
+ b.querySelector("#cmdbox").appendChild(t)};
+/* ---------- 面板：按路径加入技能 ---------- */
+DF.path=async b=>{b.innerHTML="<div class='hint'>登记扫描根＋重建注册表＋加入文件索引（经 :index 真执行）</div>"
+ +"<div class='fld'><span>技能目录（含 SKILL.md）或其父目录</span><input id='pp' placeholder='C:\\\\path\\\\to\\\\skill'><button class='key sm' id='pb'>加入</button></div>";
+ b.querySelector("#pb").onclick=()=>{const v=b.querySelector("#pp").value.trim();if(v)setCmd(":index "+v)}};
+/* ---------- 面板组（GET 端点直达） ---------- */
+function buildPanels(){const d=document.createElement("div");d.className="grp";d.innerHTML="<h4>数据面板 <s>GET /api/*</s></h4>";
+ const k=document.createElement("div");k.className="keys";
+ [["网关配置","config"],["做梦机制","config"],["链设置","config"],["模型元数据","models"],["网络","net"],["会话拓扑","sessions"],
+  ["任务总览","tasks"],["计划任务","plans"],["权限·HUD","perms"],["文件·编辑器","files"],["工作区","ws"],["技能索引","skills"],
+  ["详细细节","detail"],["界面模式","mode"],["QQ 推送","qq"],["系统","sys"]].forEach(([l,c])=>{
+  const x=document.createElement("button");x.className="key sm";x.textContent=l;x.title="/api/"+c;x.onclick=()=>openDrawer(l,c);k.appendChild(x)});
+ d.appendChild(k);$("f1").appendChild(d)}
+/* ---------- 令牌显影（仅回环 + 有效 token） ---------- */
+async function revealTok(){const r=await api("/api/token?reveal=1");
+ if(r.err){$("s_tok").textContent="拒绝显影";return jam("令牌显影被拒："+r.err)}
+ TOKFULL=r.token||"";$("s_tok").textContent=TOKFULL.length>26?(TOKFULL.slice(0,14)+"…"+TOKFULL.slice(-8)):TOKFULL;
+ $("s_tok").className="a";print("令牌","已显影全令牌（仅本机回环可见，审计已记）","sys")}
+/* ---------- 启动 ---------- */
+const HS=new URLSearchParams((location.hash||"").replace(/^#/,""));
+if(HS.get("tok")&&["127.0.0.1","localhost","::1"].includes(location.hostname)){T=String(HS.get("tok")).trim();sessionStorage.setItem("sms_tok",T);localStorage.setItem("sms_tok",T);history.replaceState(null,"",location.pathname)}
+(async()=>{keys();buildMeta();buildF1();buildPad();buildQuick();buildPanels();
+ if(T&&localStorage.getItem("sms_tok")===T){try{const i=await api("/api/info");if(!i.err){boot(i);const op=HS.get("open");if(op&&DF[op])openDrawer(op==="config"?"图形化配置":"网络",op)}}catch(e){}}
+ $("tok").focus()})();
+</script>
+<footer style="text-align:center;color:#5c6a78;font-size:11px;padding:10px">
+smsystem-suit · web_shell · 传真机控制台 v2 · 数据仅存本机 &lt;SMS_HOME&gt;/shell/ · 无外部依赖 / 无 CDN
+</footer>
+</body>
+</html>

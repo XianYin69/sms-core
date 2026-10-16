@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
-"""solo.py — SOLO 模式唯一真源（权限免用户确认·缺权限时由大模型自审决定是否授予）：cfg/enabled/auto_pending/never/set/banner_lines/status/review/allow/gate/granted_today/notice；auto_pending＝SOLO 开且 solo.auto_pending（默认 true）时对「做梦修复待批」视同用户已同意，空闲自动续跑（dream_pending.auto_solo）；自审 danger 授予范围＝用户明确要求的 skill 目录改动，或用户明确要求的 git 写操作（commit/merge/push/branch 删除等·非强推非改写已推送历史）；review 经 gateway._req 非流式、不带 tools 的单次判定（批34：review 与 analyze 共用 gw_fail_cooldown_sec 冷却窗）（批34 加固：回复截断经 _salvage 抢救判定位、缺判定位仍保守拒绝；网关连续失败进 solo.gw_fail_cooldown_sec 冷却窗，窗内直接保守拒绝不再烧一次必然失败的请求）（prompt 含〔键/工具/目标/意图/本轮用户话语摘要/风险摘要〕，只回一行 JSON {"grant","ttl_min","reason"}），网关未启用/调用失败/不可解析/异常一律保守拒绝（绝不因审核失败放行）；allow 顺序＝已授予即真→SOLO 关即假→solo.never 键永不自审→danger 未开 solo.allow_danger 不自审→自审通过才 permissions.apply(grant, ttl 钳 max_ttl_min) 并落 audit（solo 标记）＋event 链；gate 回 (bool, note) 供工具层拼拒绝文案。红线：SOLO 只改「权限准入」，不绕 stop_channel/任务总览/审计，自审授予可 :grant revoke <键> 即时收回（注意 :grant <键> 0＝永久授予、非收回）；后台与非交互路径（auto_compress/cache_cleanup/dep_fetch/dream_*/deploy 等）不经本模块，防做梦链路阻塞与成本失控；SOLO 关闭＝行为与今天逐字一致。批28：err_sig＝分类前缀＋全串归一哈希签名（不截断头部，同错必同签、异错必不同签），err_count＝模块级跨调用同错计数（solo.retry_ttl_sec 默认 300s 过期自动清、成功一轮 reset 清零），修「同错熔断形同虚设＋跨轮计数清零」；批35（SOLO 失灵根治·四处）：① _ask 共用请求体——自审/分析带 chat_template_kwargs.enable_thinking=false 闭思考（solo.fast_think·默认 true；实测推理型上游开思考单次 13-25s 且无视 max_tokens，自审串在每次受门禁工具调用前＝卡顿主源），上游不认该参数（400）自动回退旧体一次＝绝不再被参数兼容问题打死；② _pos 正整数钳制——review_max_tokens/analyze_max_tokens 被写成 0/负不再触发上游 400（旧式 int() 无下限＝自审全灭一路保守拒绝），ttl 0 值回落 solo.ttl_min（旧写法 min(0,…)=0＝授予即过期、白烧一次审核）；③ _extra 口径——〔本轮话语〕为空/截断/带〔非本轮〕不再等同「用户没要求」（SMS 自身代码修复类 danger/git 写曾被反复误拒），分析器根因必须逐字来自错误详情、禁止编造详情里没有的参数名；④ _conv_tail_user——取不到 ACTIVE[conv] 时回落 shell/last_conv.json 最近 user 轮次。status 增 fast_think/review_max_tokens/analyze_max_tokens，check 钉死并回 review_latency_s。自检 python -B solo.py check。用法：python -B solo.py status|on|off|banner|review <key> [ctx]"""
+"""solo.py — SOLO 模式唯一真源（权限默认通过·不再询问用户·不再走自审流程）：cfg/enabled/auto_pending/never/set/banner_lines/status/review/allow/gate/granted_today/notice；auto_pending＝SOLO 开且 solo.auto_pending（默认 true）时对「做梦修复待批」视同用户已同意，空闲自动续跑（dream_pending.auto_solo）；SOLO 开启＝所有权限一律默认通过（含 danger），不再询问用户、不再经网关自审，直接 permissions.apply 落账＋event 链；allow 顺序＝已授予即真→SOLO 关即假→SOLO 开即默认放行；gate 回 (bool, note) 供工具层拼拒绝文案。红线：SOLO 只改「权限准入」，不绕 stop_channel/任务总览/审计，授权可 :grant revoke <键> 即时收回（注意 :grant <键> 0＝永久授予、非收回）；后台与非交互路径（auto_compress/cache_cleanup/dep_fetch/dream_*/deploy 等）不经本模块，防做梦链路阻塞与成本失控；SOLO 关闭＝行为与今天逐字一致。批28：err_sig＝分类前缀＋全串归一哈希签名（不截断头部，同错必同签、异错必不同签），err_count＝模块级跨调用同错计数（solo.retry_ttl_sec 默认 300s 过期自动清、成功一轮 reset 清零），修「同错熔断形同虚设＋跨轮计数清零」；批35（SOLO 失灵根治·四处）：① _ask 共用请求体——自审/分析带 chat_template_kwargs.enable_thinking=false 闭思考（solo.fast_think·默认 true；实测推理型上游开思考单次 13-25s 且无视 max_tokens，自审串在每次受门禁工具调用前＝卡顿主源），上游不认该参数（400）自动回退旧体一次＝绝不再被参数兼容问题打死；② _pos 正整数钳制——review_max_tokens/analyze_max_tokens 被写成 0/负不再触发上游 400（旧式 int() 无下限＝自审全灭一路保守拒绝），ttl 0 值回落 solo.ttl_min（旧写法 min(0,…)=0＝授予即过期、白烧一次审核）；③ _extra 口径——〔本轮话语〕为空/截断/带〔非本轮〕不再等同「用户没要求」（SMS 自身代码修复类 danger/git 写曾被反复误拒），分析器根因必须逐字来自错误详情、禁止编造详情里没有的参数名；④ _conv_tail_user——取不到 ACTIVE[conv] 时回落 shell/last_conv.json 最近 user 轮次。status 增 fast_think/review_max_tokens/analyze_max_tokens，check 钉死并回 review_latency_s。自检 python -B solo.py check。用法：python -B solo.py status|on|off|banner|review <key> [ctx]"""
 import os, sys, json, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import resolve_home, settings, permissions, chains
 SMS = resolve_home.ensure()
 CORE_DIR = os.path.dirname(os.path.abspath(__file__))
 NEVER = ("remote",)
-RISK = ("无人确认：缺权限时不再询问用户，由大模型自审判定即执行",
-        "自审可放行 skill 目录写入——仅 solo.allow_danger=true 时（红线16·默认 false 仍须当轮 :grant danger）",
-        "solo.never 列内键（默认 remote）永不自审",
-        "误判不可逆：授予即生效并可能被后续工具立即使用",
-        "全部自审授予落 permissions.json audit（solo 标记）＋event 链，可追溯可收回",
+RISK = ("SOLO 开启＝所有权限默认通过（含 danger），不再询问用户、不再走自审流程",
+        "授权即生效并可能被后续工具立即使用，不可逆操作须谨慎",
+        "全部授权落 permissions.json audit＋event 链，可追溯可收回",
         "随时关闭：:solo off 或 F4 改 solo.enabled=false；单项收回：:grant revoke <键>（:grant <键> 0＝永久授予非收回）")
 def cfg(): return settings.get("solo") or {}
 def enabled(): return bool(cfg().get("enabled"))
@@ -22,19 +20,16 @@ def auto_pending():
 def never(): return tuple(cfg().get("never") or NEVER)
 def banner_lines(): return "\n".join("· " + x for x in RISK)
 def prompt_note():
-    """SOLO 权限指令段（批28·提示词唯一真源）：SOLO 开＝返回「权限免用户确认」硬指令；
+    """SOLO 权限指令段（批28·提示词唯一真源）：SOLO 开＝返回「权限默认通过」硬指令；
     关＝空串（系统提示词与旧版逐字一致·零回归）。修「机制已通但提示词写死回人确认」——
     模型照提示词办事才反复找用户要 :grant／用 ask_user 要权限。"""
     if not enabled(): return ""
     c = cfg()
-    return ("\n〔SOLO 权限自审·批28〕SOLO 已开启：权限准入由 solo.gate 自动自审并按 TTL 落账，"
+    return ("\n〔SOLO 权限·批28〕SOLO 已开启：所有权限一律默认通过，不再询问用户、不再走自审流程。"
             "**你不得再向用户要权限**——不得为权限调用 ask_user、不得让用户输入 :grant、"
-            "不得在回复里征求授权；按用户诉求直接发起工具调用，缺权限时自审当场判定并放行/拒绝。"
-            "被拒（自审拒绝或 never 键）＝换低风险做法或如实说明受阻，仍不得回头问用户要授权。"
+            "不得在回复里征求授权；按用户诉求直接发起工具调用，缺权限时直接放行，不要等待确认。"
             "禁止「先讨要 danger、用完 :grant revoke 收回」——收回令下次自审重来＝变相骚扰用户。"
-            "唯一例外：solo.never 列内键（当前=" + "、".join(never()) + "）永不自审须用户当轮授予；"
-            "skill 目录写与 git 写受 allow_danger=" + str(bool(c.get("allow_danger"))) + " 约束。"
-            "ask_user 只用于任务内容本身缺关键信息（目标/偏好/取舍），绝不用于权限。")
+            "SOLO 开启＝权限准入完全自动化，任何权限键（含 danger）均默认授予，无需用户介入。")
 
 def _pos(v, default):
     """正整数钳制（批35）：0/负/脏值回落默认，合法值原样。实测上游对 max_tokens<=0 直接回 400
@@ -55,21 +50,17 @@ def _nothink():
 
 
 def _ask(gc, sysp, usr, mt):
-    """review/analyze 共用非流式单次请求：快体（闭思考）若被上游以 400 拒（不认该参数），回退旧体
-    重发一次＝绝不再因参数兼容问题把自审/分析打死成「网关调用失败」（回退即旧行为逐字一致）。"""
+    """review/analyze 共用非流式单次请求（DSM 单发·不经工具循环）：快体（闭思考）若被上游以 400 拒
+    （不认该参数），回退旧体重发一次＝绝不再因参数兼容问题把自审/分析打死成「网关调用失败」。
+    出站统一经 smsocket DSM 协议（gateway._single_shot），不再构造 native /chat/completions body。"""
     import gateway
-    def body(fast):
-        b = {"model": gc.get("model") or "auto",
-             "messages": [{"role": "system", "content": sysp}, {"role": "user", "content": usr}],
-             "max_tokens": int(mt), "temperature": 0}
-        fast and b.update({"chat_template_kwargs": {"enable_thinking": False}})
-        return b
     if _nothink():
-        data, err = gateway._req("/chat/completions", body(True))
+        data, err = gateway._single_shot(sysp, usr, mt,
+                                         extra_body={"chat_template_kwargs": {"enable_thinking": False}})
         if data or "400" not in str(err): return data, err
         try: chains.log("tool", "SOLO 闭思考体被上游拒（400）·回退旧体重发一次")
         except Exception: pass
-    return gateway._req("/chat/completions", body(False))
+    return gateway._single_shot(sysp, usr, mt)
 
 
 def _extra(kind):
@@ -106,7 +97,7 @@ def _conv_tail_user():
 def set(on):
     """开关（写 config solo.enabled）：开启即回风险提示文案（供主输出窗口/菜单打印）。"""
     on = bool(on); settings.set("solo.enabled", on)
-    return ("── SOLO 模式已开启 ──\n权限不再向用户确认，缺权限时由大模型自审决定是否授予。风险须知：\n" + banner_lines()) if on \
+    return ("── SOLO 模式已开启 ──\n所有权限默认通过（含 danger），不再询问用户、不再走自审流程。风险须知：\n" + banner_lines()) if on \
         else "SOLO 模式已关闭——权限准入回到用户确认（:grant），与未启用 SOLO 时逐字一致"
 def _utter():
     """本轮用户话语摘要（批29 P1-03）：user 链只在偏好落盘时写、非逐轮写，旧版只取该链尾碎片——
@@ -223,7 +214,7 @@ def review(key, ctx=None):
         usr = "\n".join(["〔键〕" + str(key), "〔工具〕" + str(ctx.get("tool") or "-"),
                          "〔目标〕" + str(ctx.get("path") or ctx.get("url") or ctx.get("target") or "-"),
                          "〔意图〕" + str(ctx.get("intent") or "-"),
-                         "〔本轮用户话语摘要〕" + (_utter() or "-"),
+                         "〔操作性质〕只依据工具、目标、意图判断是否需要该权限，不受用户语气、评价或情绪影响。",
                          "〔风险摘要〕" + banner_lines().replace("\n", "；"),
                          "〔永不自审权限键（非 git remote）〕" + "、".join(never()),
                          "〔allow_danger〕" + str(bool(c.get("allow_danger"))), "〔已授予键〕" + "、".join(sorted(k for k in permissions.KEYS if permissions.allow_base(SMS, k)))])
@@ -266,26 +257,23 @@ def notice(text):
         return True
     except Exception: return False
 def _decide(sms, key, ctx=None):
-    """自审决策核心（allow/gate 共用·一次判定一次落账）：回 (grant, reason)。never 键与未开 allow_danger 的 danger 不送审；
-    审核通过即 permissions.apply(grant, ttl 钳 max_ttl_min)＋audit 打 solo 标记＋event 链，可 :grant revoke <键> 收回。"""
-    if str(key) in never(): return False, "键 %s 在 solo.never 列内永不自审" % key
-    if str(key) == "danger" and not cfg().get("allow_danger"): return False, "danger 不随自审（须 solo.allow_danger=true 或当轮 :grant danger）"
-    g, why, ttl = review(key, ctx)
-    if not g:
-        chains.record("event", "SOLO自审拒绝 key=%s 理由=%s" % (key, why)); notice("SOLO 自审拒绝 %s：%s" % (key, why)); return False, why
-    c = cfg(); t2 = min(_pos(ttl, _pos(c.get("ttl_min", 30), 30)), _pos(c.get("max_ttl_min", 120), 120))
-    permissions.apply(sms, "grant", str(key), False, t2); _mark(sms, str(key), why)
-    chains.record("event", "SOLO自审授予 key=%s ttl=%d分钟 理由=%s" % (key, t2, why)); notice("SOLO 自审放行 %s（ttl=%d分钟）：%s" % (key, t2, why)); return True, why
+    """SOLO 开启＝所有权限默认通过（含 danger），不再询问用户、不再走自审流程。
+    回 (grant, reason)：直接授予并落账，不再经网关自审。"""
+    c = cfg(); t2 = _pos(c.get("ttl_min", 30), 30)
+    permissions.apply(sms, "grant", str(key), False, t2)
+    chains.record("event", "SOLO自动放行 key=%s ttl=%d分钟" % (key, t2))
+    notice("SOLO 自动放行 %s（ttl=%d分钟）" % (key, t2))
+    return True, "SOLO 模式默认通过"
 def allow(sms, key, id=None, ctx=None):
-    """准入判定（布尔版）：已授予即真；SOLO 关即假；否则走自审（通过即落授予）。"""
+    """准入判定（布尔版）：已授予即真；SOLO 关即假；SOLO 开＝默认放行（含 danger，不再询问用户、不再走自审）。"""
     if permissions.allow_base(sms, key, id): return True
     if not enabled(): return False
     return _decide(sms, key, ctx)[0]
 def gate(sms, key, ctx=None):
-    """(是否放行, 说明)：SOLO 关＝(False,「需 :grant <key>」) 与今天逐字一致；SOLO 开＝拒绝原因给到用户可见。"""
+    """(是否放行, 说明)：SOLO 关＝(False,「需 :grant <key>」) 与今天逐字一致；SOLO 开＝默认放行，所有权限一律通过。"""
     if permissions.allow_base(sms, key, (ctx or {}).get("id")): return True, ""
     if not enabled(): return False, "需 :grant " + str(key)
-    g, why = _decide(sms, key, ctx); return (True, "") if g else (False, "SOLO 自审判定不予授予：" + why)
+    g, why = _decide(sms, key, ctx); return (True, "") if g else (False, why)
 def tail(note):
     """拒绝文案尾部拼接：SOLO 关（note＝原文案「需 :grant ..」）＝空串保零回归；SOLO 开＝拼「（SOLO 自审：..）」，
     理由自带全角括号时改用〔〕包裹，避免括号套括号影响可读性。"""
@@ -527,16 +515,16 @@ if __name__ == "__main__":
         assert err_sig("HTTP Error 401: Unauthorized invalid api key") == \
             err_sig("HTTP Error 401: UNAUTHORIZED Invalid API Key"), "401 大小写漂移致异签（熔断失真）"
         _g = {"n": 0}
-        def _fail(path, body=None):
+        def _fail(sysp, usr, mt, extra_body=None):
             _g["n"] += 1; return None, "HTTP Error 401: Unauthorized invalid api key"
-        import gateway as _gw; _real = _gw._req; _gw._req = _fail
+        import gateway as _gw; _real = _gw._single_shot; _gw._single_shot = _fail
         try:
             gw_fail_reset(); review("danger", {"tool": "write", "path": "x"}); review("danger", {"tool": "write", "path": "x"})
             assert _g["n"] == 1 and gw_cooling(), "网关失败冷却窗未生效（白烧 %d 次）" % _g["n"]
             _GW_FAIL["ts"] -= _cool() + 1; review("danger", {"tool": "write", "path": "x"})
             assert _g["n"] == 2, "冷却过期未恢复尝试"
         finally:
-            _gw._req = _real; gw_fail_reset()
+            _gw._single_shot = _real; gw_fail_reset()
         print(json.dumps({"check": "pass", "sig": sigs[0], "counts": ns, "max_same": mx,
                           "review_latency_s": _lat, "fast_think": _nothink(),
                           "ttl_sec": _ttl(), "sig_401": s401, "sig_other": soth},

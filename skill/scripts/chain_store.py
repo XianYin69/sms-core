@@ -117,6 +117,12 @@ def _wj(p, d):
     atomic_io.wjson(p, d); st = os.stat(p); FC[p] = (st.st_size, st.st_mtime, d)
     _mark(os.path.dirname(os.path.dirname(p)), os.path.basename(os.path.dirname(p)))
     chains_git.touch()
+    # 2026-10-15：写碎片后作废 prompt_pack._hits_cache（5s TTL 内的 32K cos 结果）。
+    # 读写同进程时（bump/merge/prune/对话收口）不作废＝写后立刻读到过期召回。
+    # 惰性 import：避免 chain_store 与 prompt_pack 循环导入（prompt_pack import chain_store）。
+    try:
+        import prompt_pack; prompt_pack._hits_invalidate()
+    except Exception: pass
 
 
 def _frag(e):

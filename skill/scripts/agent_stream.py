@@ -53,8 +53,11 @@ def ask(text, on_line, st=lambda n: None, ev=None):
     chains.record("dialogue", "user@" + conv + " " + text[:200], _edge(conv)); rc = 0; st("话语送数据流")
     try:
         if spec.get("native"):
-            body = sr.prefix() + tt.attach(text) + (text if not prefix_on() else chains.conversation(compose(text, SMS) + "\n\n" + inj))
             st("提示词构建·任务总览（脚本粗分种子＋批22 复杂判定交模型）·压缩记忆组装·网关流式执行（路由命中仅作〔参考〕，直答/派工具/建表/建技能由模型自主定）")
+            # 2026-10-15：st 先于 chains.conversation——旧版把记忆组装放在状态上报之前，
+            # 用户侧看到的是「提示词构建」卡住 450ms 才跳到网关流式执行；现在状态先行，
+            # 压缩记忆组装（冷启 all_frags ~400ms / warm ~50ms）在用户已看到提示后台进行。
+            body = sr.prefix() + tt.attach(text) + (text if not prefix_on() else chains.conversation(compose(text, SMS) + "\n\n" + inj))
             bl = body.split("\n"); imgs = None
             if bl[-1].startswith("[图:") and bl[-1].endswith("]"): p = bl[-1][3:-1].strip(); body = "\n".join(bl[:-1]); imgs = [p] if os.path.isfile(p) else None
             resp = gateway.run(body, on_line, images=imgs, ev=ev); sr.flag() and sr.append(text, str(resp or "（本轮网关中断·任务未必完成——下轮据接续与任务总览继续推进）"))
