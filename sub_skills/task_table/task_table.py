@@ -427,32 +427,74 @@ def _remove(doc, subs, x, row):
             "、".join(str(k["id"]) for k in ks) + "）" if ks else ""))
 
 
+def _auto_cands(sk="", goal=""):
+    """auto_done 候选表（批50 打标目标修复）：按 本对话→同 session→其他 逐表找「行 skill 同名优先、goal 匹配
+    次之」的未终态叶子行——aut 版只看最新一张在途表，多表在途时（树形延申/先后两张任务）其行不匹配就直接返 "",
+    正在推进的那张表就永不被打标、拖到收口对账才补（=不会自动打标＋延迟打标实证）。同 conv 内优先「有 running 行」
+    的表（＝正在派发的表）→ 最近活动（文件 mtime）→ 新建序。生成器逐个 yield (doc, 命中行)。"""
+    c = str(chains.ACTIVE.get("conv") or "")
+    s = str(chains.cur_sess() or "")
+    docs = []
+    for t in _all():
+        d = _lc(t)
+        if not d or str(d.get("table") or "") not in ("task_table", ""):
+            continue
+        rows = open_rows(d)
+        if not rows: continue
+        if _pick_row(rows, sk, goal) is None: continue  # 行都不像＝该表无本次派发对应，跳过省一轮 _mine/写盘
+        sc = 0 if d.get("conv") == c else 1 if s and d.get("sess") == s else 2
+        try: mt = os.stat(_tf(t)).st_mtime
+        except Exception: mt = 0.0
+        act = 2 if any(r.get("status") == "running" for r in rows) else 1 if mt else 0
+        docs.append((sc, -act, -mt, t, d))
+    docs.sort(key=lambda z: z[:4])
+    for _, _, _, t, d in docs:
+        x = _pick_row(open_rows(d), sk, goal)
+        if x is not None:
+            yield d, x
+
+
+def _sk(v):
+    return str(v or "").strip().lower()
+
+
+def _pick_row(rows, sk, goal):
+    """行命中判据：skill 同名（running>pending>error 优先取正被派发的那行）→ goal 文本互含（_gmatch）→ 无命中 None。"""
+    if sk:
+        same = [r for r in rows if str(r.get("skill") or "").strip().lower() == sk]
+        for st in ("running", "pending", "error"):
+            hit = next((r for r in same if r.get("status") == st), None)
+            if hit is not None: return hit
+        if same: return same[0]
+    if str(goal or "").strip():
+        return next((r for r in rows if _gmatch(goal, r)), None)
+    return None
+
+
 def auto_done(skill="", goal="", result="", ok=True, tid=""):
-    """批30 P0：技能/task 派发成功即自动回写行状态——模型按〔任务表〕派发后常漏 task_plan status，
-    行滞留 pending/running 令 flow_guard 反复续推。未 done 行中「行 skill 同名」优先、goal 匹配次之；
-    ok 真且命中→ done＋result[:600]＋auto="skill"；ok 假→ error。整体吞异常返 ""（绝不打断工具循环）。"""
+    """批30 P0：技能/task 派发成功即自动回写行状态——模型按〔任务总览〕派发后常漏 task_plan status，
+    行滞留 pending/running 令 flow_guard 反复续推。批50：打标目标不再只看最新一张在途表——逐表（本对话→同
+    session→其他）找到「行 skill 同名优先、goal 匹配次之」的未终态叶子行即回写；skill 同名时优先置 running 的
+    那行（＝正被派发的行）再退 pending。ok 真且命中→ done＋result[:600]＋auto="skill"；ok 假→ error。整体吞
+    异常返 ""（绝不打断工具循环）。"""
     try:
-        doc = _load(str(tid or "").strip() or _latest("task_table") or _latest())
-        if not doc: return ""
-        if not _mine(doc):  # 批32：显式 tid 也不越会话改他人表
-            chains.log("tool", "task_table.auto_done 拒写他人表：" + str(doc["id"])[-14:]
-                       + "（表 conv=" + str(doc.get("conv") or "") + "·当前 conv="
-                       + str(chains.ACTIVE.get("conv") or "") + "）")
-            return ""
-        rows = open_rows(doc)
-        if not rows: return ""
-        sk = str(skill or "").strip().lower()
-        x = next((r for r in rows if sk and str(r.get("skill") or "").strip().lower() == sk), None)
-        if x is None and str(goal or "").strip():
-            x = next((r for r in rows if _gmatch(goal, r)), None)
-        if x is None: return ""
-        if skill and ok and not dispatch_ok(result): ok = False  # 批33 缺陷B：核侧同判据（空输出/无输出占位串≠成功）
-        x["status"] = "done" if ok else "error"
-        x["result"] = str(result or "")[:600]
-        x["auto"] = "skill"; x["auto_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-        _save(doc); emit(doc, LABEL + "（派发成功自动置行）")
-        chains.log("tool", "task_table.auto_done:" + str(doc["id"])[-14:] + "/" + str(x["id"]) + "=" + x["status"])
-        return "行 " + str(x["id"]) + (" 自动置 done（派发回写）" if ok else " 自动置 error（派发失败回写）")
+        if str(tid or "").strip():
+            hit = _find(str(tid).strip())
+            doc = _load(hit) if hit else None
+            cands = [(doc, _pick_row(open_rows(doc), _sk(skill), str(goal or ""))) for doc in [doc] if doc]
+        else:
+            cands = list(_auto_cands(_sk(skill), str(goal or "")))
+        for doc, x in cands:
+            if x is None or not _mine(doc):  # 批32：显式/命中的他对话表一律不越会话（跳过继续找本对话表）
+                continue
+            if skill and ok and not dispatch_ok(result): ok = False  # 批33 缺陷B：核侧同判据（空输出/无输出占位串≠成功）
+            x["status"] = "done" if ok else "error"
+            x["result"] = str(result or "")[:600]
+            x["auto"] = "skill"; x["auto_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            _save(doc); emit(doc, LABEL + "（派发成功自动置行）")
+            chains.log("tool", "task_table.auto_done:" + str(doc["id"])[-14:] + "/" + str(x["id"]) + "=" + x["status"])
+            return "行 " + str(x["id"]) + (" 自动置 done（派发回写）" if ok else " 自动置 error（派发失败回写）")
+        return ""
     except Exception as e:
         try: chains.log("tool", "task_table.auto_done 跳过：" + str(e)[:80])
         except Exception: pass  # noqa 回写绝不影响派发主路
