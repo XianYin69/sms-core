@@ -95,6 +95,8 @@ def run_tree(doc, wait=False):
     try:
         docs = tt.T.tree_of(doc) if tt._tree_on() else [doc]
     except Exception: docs = [doc]
+    try: tt.reconcile()  # 批50：先跨对话对账——已完成未打标行即时补标，他对话表不再索要 :session use
+    except Exception: pass
     mine, skip = [], []
     for d in docs:
         (mine if tt._mine(d) else skip).append(d)
@@ -112,10 +114,10 @@ def run_tree(doc, wait=False):
             else:
                 local.append(x)
     if not send and not local:
-        return "整棵树无可执行未完成叶子行" + ("（跳过他对话表 %d 张·:session use 接续）" % len(skip) if skip else "")
+        return "整棵树无可执行未完成叶子行" + ("（他对话表 %d 张·其已完成未打标行已由对账自动补标）" % len(skip) if skip else "")
     if not send:
         return ("本树无可派发（〔发〕）行，%d 行全为本地处理行，请按清单用 exec/read/write 自办%s"
-                % (len(local), "；他对话表 %d 张未代改" % len(skip) if skip else "")) + "\n" + _local_list(local)
+                % (len(local), "；他对话表 %d 张·已完成未打标行已自动补标" % len(skip) if skip else "")) + "\n" + _local_list(local)
     lim = max(1, int(settings.get("task.batch_parallel", 3) or 3))
     runner = lambda r: fns[id(r)](r)
     ids = {str(r.get("id")) for r in send}
@@ -129,8 +131,8 @@ def run_tree(doc, wait=False):
         return ("跨表跨层级并发批次完成：树内 %d 张表·本批 %d 行分 %d 批〔%s〕·成功 %d·失败 %d·超时 %d·墙钟 %ss"
                 % (len(mine), len(send), len(out["batches"]), bt,
                    out["done"], out["error"], out["timeout"], out["wall_s"])
-                + ("；他对话表 %d 张未代改" % len(skip) if skip else "")
-                + ("\n另有本地处理行（同轮自办）：\n" + _local_list(local) if local else ""))
++ ("；他对话表 %d 张·已完成未打标行已自动补标" % len(skip) if skip else "")
+                 + ("\n另有本地处理行（同轮自办）：\n" + _local_list(local) if local else ""))
 
     def _bg_run():
         try:
@@ -147,7 +149,7 @@ def run_tree(doc, wait=False):
             "另有 %d 行是〔本〕本地处理行——请本轮就用 exec/read/write/glob/grep 自办（与派发同时进行，"
             "进度照常落总览＋顶栏，稍后 task_detail 查）%s\n本地待办清单：\n%s"
             % (len(send), len(mine), lim, len(local),
-               ("；他对话表 %d 张未代改（:session use 接续）" % len(skip) if skip else ""),
+               ("；他对话表 %d 张·已完成未打标行已自动补标" % len(skip) if skip else ""),
                _local_list(local) if local else "（无）"))
 
 

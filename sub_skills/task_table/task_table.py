@@ -123,7 +123,12 @@ def _mkdoc(intent, subs, parent=None, root=None):
            "table": "task_table",
            "parent": p or None, "root": r,
            "src": __import__("qq_stall").src(chains.ACTIVE["conv"]), "subtasks": subs}
-    _save(doc); emit(doc, LABEL + "（粗分种子·首轮据实改表）"); return doc
+    try: inher = _subtasks_inherit(subs)
+    except Exception: inher = 0  # noqa 继承失败照常建表，绝不断主链路
+    _save(doc)
+    emit(doc, LABEL + ("（粗分种子·首轮据实改表·%d 行按完成证据自动置 done）" % inher
+                       if inher else "（粗分种子·首轮据实改表）"))
+    return doc
 
 
 CUT = "，,。;；、 \n\"'“”‘’「」[]()（）"
@@ -166,10 +171,13 @@ def graft(doc, subs, note=""):
         x["id"] = "t%d" % _maxn(subs2)      # 并入必须重新编号：种子行自带 t1..tN，与既有行同号即撞车
         x["merged_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
         subs2.append(x); added += 1
+    try: inher = _subtasks_inherit(subs2)
+    except Exception: inher = 0  # noqa 继承失败照常并入，绝不断主链路
     doc["subtasks"] = subs2
     doc["merged"] = int(doc.get("merged") or 0) + added
     _save(doc)
-    emit(doc, LABEL + "（同目的自动并入 " + str(added) + " 行·去重 " + str(dup) + " 行" + note + "）")
+    emit(doc, LABEL + "（同目的自动并入 " + str(added) + " 行·去重 " + str(dup) + " 行" + note
+         + ("·%d 行按完成证据自动置 done）" % inher if inher else "）"))
     chains.log("tool", "task_table.graft:" + str(doc["id"])[-14:] + " 并入 " + str(added)
                + " 行、步骤去重 " + str(dup) + " 行")
     return added, dup
@@ -214,8 +222,15 @@ def _add(doc, subs, parent_row, value):
     row = {"id": "t%d" % n, "goal": g, "skill": h, "inst": h or ("t%d" % n), "status": "pending",
            "lane": "fg", "pid": pid, "k": (T.sig(g) if T else g),
            "res": sorted(tr.resources(g, h or "")[0])}
-    subs.append(row); _save(doc); emit(doc, LABEL + "加行" + ("（挂 " + pref + " 之下）" if pref else ""))
-    return "已加 %s｜%s%s%s" % (T.label(doc, row) if T else "t%d" % n, g[:60], ("·指定技能 " + h) if h else "", ("·父行 " + pref) if pref else "")
+    subs.append(row)
+    try: inh = _subtasks_inherit([row])
+    except Exception: inh = 0  # noqa 继承失败照常加行，绝不断主链路
+    _save(doc)
+    emit(doc, LABEL + "加行" + ("（挂 " + pref + " 之下）" if pref else "")
+         + ("（该步骤按完成证据自动置 done）" if inh else ""))
+    return "已加 %s｜%s%s%s%s" % (T.label(doc, row) if T else "t%d" % n, g[:60],
+                                 ("·指定技能 " + h) if h else "", ("·父行 " + pref) if pref else "",
+                                 ("·完成证据命中自动置 done" if inh else ""))
 
 
 def plan(intent, steps=None, parent=None, root=None, merge=True):
@@ -252,7 +267,8 @@ def _claim_tid(text):
 def claim(text="", tid="", conv=""):
     """批47 认领原表续推（绝不另建新表）：补投/接续文本里的表尾号 → 同 session 内把本 conv 记为该表现行归属
     （claims 留痕·行内容与状态零改），令 pending/auto_done/reconcile 直接接管；已无未完成行＝只回免表提示；
-    他 session 的表不夺权（批23/32 对等边界）＝只提示 :session use 接续，同样不另建表。"""
+    他 session 的表不夺权（批23/32 对等边界）＝先按完成证据自动补标（批50），确无证据才说明「属他 session 待该
+    会话推进」，不再提示用户 :session use 切换会话，同样不另建表。"""
     try:
         t = str(tid or "").strip() or _claim_tid(text)
         if not t: return ""
@@ -270,8 +286,17 @@ def claim(text="", tid="", conv=""):
                     " 行全终态）——免表直答，勿另建一张。")
         if str(doc.get("conv") or "") != c:
             if sid and str(doc.get("sess") or "") not in ("", sid):
+                ch = _reconcile_doc(doc)
+                if ch:  # 批50：跨对话补标——已完成未打标不索要 :session use
+                    _save(doc); emit(doc, LABEL + "（补投认领前·跨对话对账补标）")
+                    chains.log("tool", "task_table.claim:" + hit[-14:] + " 跨会话补标 " + ",".join(ch))
+                rest = [x for x in subs if open_row(x)]
+                if not rest:
+                    return ("〔补投认领〕表 " + hit[-14:] + " 已完成但未打标——已按完成证据自动补标 " + str(len(ch)) +
+                            " 行并收口，无需 :session use、无需另建新表。")
                 return ("〔补投认领〕表 " + hit[-14:] + " 属他 session（" + str(doc.get("sess") or "?") + "）余 " +
-                        str(len(rest)) + "/" + str(len(subs)) + " 行——不越会话代改、亦不另建新表，提示用户 :session use 接续。")
+                        str(len(rest)) + "/" + str(len(subs)) + " 行尚无完成证据——不越会话代做、亦不另建新表，"
+                        "由所属会话推进或直答回报。")
             doc.setdefault("claims", []).append({"from": str(doc.get("conv") or ""), "to": c,
                                                  "at": time.strftime("%Y-%m-%d %H:%M:%S"),
                                                  "by": str(text or "")[:40]})
@@ -371,10 +396,12 @@ def attach(intent):
             "同目的的既有总览会自动并入，无须自己找。"
             + ("本对话已有在途总览，续推它即可、禁止另开新表：" + mine + "\n" if mine else "\n"))
 def pending(conv=""):
-    if time.time() - _STALE_TS[0] > 60:  # 批30 P1 自愈：守卫每轮查未完成行即顺带降级超时 running 行
+    if time.time() - _STALE_TS[0] > 60:  # 批30 P1 自愈：守卫每轮查未完成行即顺带降级超时 running 行（批50 增对账补标）
         _STALE_TS[0] = time.time()
         try: stale_requeue()
         except Exception: pass  # noqa 自愈失败不影响守卫
+        try: reconcile()  # 批50：周期对账——已完成未打标行即时补标（含跨对话），守护不再死循环
+        except Exception: pass  # noqa 对账失败不影响守卫
     c = conv or chains.ACTIVE.get("conv") or ""; out = []
     for tid in ([fn[:-5] for fn in sorted(os.listdir(TD)) if fn.endswith(".json")] if os.path.isdir(TD) else []):
         doc = _load(tid); rest = guard_rows(doc, bool(doc) and doc.get("conv") == c)
@@ -403,6 +430,50 @@ def _gmatch(goal, row):
     g, r = str(goal or "").strip().lower(), str(row.get("goal") or "").strip().lower()
     if not g or not r: return False
     return g.startswith(r[:24]) or r.startswith(g[:24]) or g in r or r in g
+
+
+def _reuse_done(goal):
+    """同目标已完成证据（批50）：在途表＋已归档表里找「同目标（相似≥merge_sim 或互含）且 done＋result 非空」
+    的行，回其 result——重建同一任务时新节点自动继承完成证据，不再以 pending 卡本轮守卫；无证据返 None。"""
+    gv = str(goal or "").strip()
+    if not gv: return None
+    dirs = []
+    if os.path.isdir(TD): dirs += [os.path.join(TD, fn) for fn in os.listdir(TD) if fn.endswith(".json")]
+    if os.path.isdir(AD): dirs += [os.path.join(AD, fn) for fn in os.listdir(AD) if fn.endswith(".json")]
+    for q in dirs:
+        try: d = atomic_io.rjson(q)
+        except Exception: continue
+        for x in (d or {}).get("subtasks") or []:
+            if str(x.get("status")) != "done" or not str(x.get("result") or "").strip(): continue
+            try: same = (T and T.sim(gv, x.get("goal")) >= T.th()) or _gmatch(gv, x)
+            except Exception: same = _gmatch(gv, x)
+            if same: return str(x.get("result"))[:600]
+    return None
+
+
+def _subtasks_inherit(subs):
+    """新行自动继承完成证据（批50 打标修复·新建节点不再滞留 pending）：每行未终态且无 result 的新行，若同目标
+    在既有表（含归档）已 done 有 result → 置 done＋继承其 result＋auto="inherit"。回继承行数。"""
+    n = 0
+    for x in subs or []:
+        if not open_row(x) or str(x.get("result") or "").strip(): continue
+        rt = _reuse_done(x.get("goal"))
+        if rt is None: continue
+        x["status"] = "done"; x["result"] = rt; x["auto"] = "inherit"
+        x["auto_at"] = time.strftime("%Y-%m-%d %H:%M:%S"); n += 1
+    return n
+
+
+def _reconcile_doc(doc):
+    """单表收口对账（批50 抽核，供 reconcile/claim/pending 共用）：非终态叶子行 result 非空或写资源本轮新落盘
+    （mtime≥表 created·批33 新鲜度）→ 置 done＋auto="reconcile"。回被补行 id 列表。"""
+    subs = doc.get("subtasks") or []; ch = []; since = _since(doc)
+    for x in subs:
+        if not open_row(x) or is_agg(doc, x): continue
+        if str(x.get("result") or "").strip() or _artifacts(x, since):
+            x["status"] = "done"; x["auto"] = "reconcile"
+            x["auto_at"] = time.strftime("%Y-%m-%d %H:%M:%S"); ch.append(str(x["id"]))
+    return ch
 
 
 def _mine(doc, conv=""):
@@ -475,7 +546,8 @@ def auto_done(skill="", goal="", result="", ok=True, tid=""):
     """批30 P0：技能/task 派发成功即自动回写行状态——模型按〔任务总览〕派发后常漏 task_plan status，
     行滞留 pending/running 令 flow_guard 反复续推。批50：打标目标不再只看最新一张在途表——逐表（本对话→同
     session→其他）找到「行 skill 同名优先、goal 匹配次之」的未终态叶子行即回写；skill 同名时优先置 running 的
-    那行（＝正被派发的行）再退 pending。ok 真且命中→ done＋result[:600]＋auto="skill"；ok 假→ error。整体吞
+    那行（＝正被派发的行）再退 pending；命中他会话表也照常回写（跨对话补标·只动 status/result/auto 三字段，
+    不再要求 :session use 切换会话）。ok 真且命中→ done＋result[:600]＋auto="skill"；ok 假→ error。整体吞
     异常返 ""（绝不打断工具循环）。"""
     try:
         if str(tid or "").strip():
@@ -485,15 +557,15 @@ def auto_done(skill="", goal="", result="", ok=True, tid=""):
         else:
             cands = list(_auto_cands(_sk(skill), str(goal or "")))
         for doc, x in cands:
-            if x is None or not _mine(doc):  # 批32：显式/命中的他对话表一律不越会话（跳过继续找本对话表）
-                continue
+            if x is None: continue
+            cross_d = not _mine(doc)  # 批50：跨对话补标——他人会话的同目标行同样回写（只动 status/result/auto 三字段）
             if skill and ok and not dispatch_ok(result): ok = False  # 批33 缺陷B：核侧同判据（空输出/无输出占位串≠成功）
             x["status"] = "done" if ok else "error"
             x["result"] = str(result or "")[:600]
             x["auto"] = "skill"; x["auto_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-            _save(doc); emit(doc, LABEL + "（派发成功自动置行）")
-            chains.log("tool", "task_table.auto_done:" + str(doc["id"])[-14:] + "/" + str(x["id"]) + "=" + x["status"])
-            return "行 " + str(x["id"]) + (" 自动置 done（派发回写）" if ok else " 自动置 error（派发失败回写）")
+            _save(doc); emit(doc, LABEL + ("（派发成功自动置行" + ("·跨对话" if cross_d else "") + "）"))
+            chains.log("tool", "task_table.auto_done:" + str(doc["id"])[-14:] + "/" + str(x["id"]) + "=" + x["status"] + ("跨对话" if cross_d else ""))
+            return "行 " + str(x["id"]) + (" 自动置 done（派发回写" + ("·跨对话" if cross_d else "") + "）" if ok else " 自动置 error（派发失败回写）")
         return ""
     except Exception as e:
         try: chains.log("tool", "task_table.auto_done 跳过：" + str(e)[:80])
@@ -542,30 +614,26 @@ def _artifacts(row, since=0.0):
 
 
 def reconcile(conv=""):
-    """批30 P1 收口对账：本 conv 在途表的非 done 行，行 result 非空或写资源本轮新落盘（mtime≥表 created·批33 缺陷A 新鲜度）→ 补置 done
-    （auto="reconcile"），否则保留不动；回摘要串。挂在 agent_stream 收口 chains.record("session","close:") 之前。
-    批32：只动本 conv 的表（含无主表 conv=""），他对话表跳过并 log 一笔「拒写他人表」。"""
+    """批30 P1 收口对账＋批50 跨对话补标：全部在途表（不限本 conv）的非终态叶子行，行 result 非空或写资源
+    本轮新落盘（mtime≥表 created·批33 缺陷A 新鲜度）→ 补置 done（auto="reconcile"）。已完成而未打标的表
+    从此即时被补标：守护不再对着已完成任务死循环，也不需要用户 :session use 切换会话去完成他会话的任务。
+    挂在 agent_stream 收口与 pending() 周期自愈两处；跨对话补标只写 status/result/auto 三字段，行内容零改。"""
     try:
-        c = conv or chains.ACTIVE.get("conv") or ""; hits = []; rej = []
+        c = conv or chains.ACTIVE.get("conv") or ""; hits = []; cross = []
         tids = [fn[:-5] for fn in sorted(os.listdir(TD)) if fn.endswith(".json")] if os.path.isdir(TD) else []
         for tid in tids:
             doc = _load(tid)
             if not doc: continue
-            if not _mine(doc, c):  # 批32：他对话的表一律不动（越会话代改＝红线）
-                rej.append(tid[-14:]); continue
-            subs = doc.get("subtasks") or []; ch = []; since = _since(doc)
-            for x in subs:
-                if not open_row(x) or is_agg(doc, x): continue
-                if str(x.get("result") or "").strip() or _artifacts(x, since):
-                    x["status"] = "done"; x["auto"] = "reconcile"
-                    x["auto_at"] = time.strftime("%Y-%m-%d %H:%M:%S"); ch.append(str(x["id"]))
-            if ch:
-                _save(doc); emit(doc, LABEL + "（收口对账补标）")
-                hits.append(str(doc["id"])[-14:] + ":" + ",".join(ch))
+            ch = _reconcile_doc(doc)
+            if not ch: continue
+            _save(doc)
+            emit(doc, LABEL + ("（收口对账补标" + ("·跨对话" if not _mine(doc, c) else "") + "）"))
+            hits.append(str(doc["id"])[-14:] + ":" + ",".join(ch))
+            if not _mine(doc, c): cross.append(str(doc["id"])[-14:])
         chains.log("tool", "task_table.reconcile:" + ("；".join(hits)[:200] if hits else "无补标")
-                   + ("｜拒写他人表 " + str(len(rej)) + " 张：" + ",".join(rej)[:120] if rej else ""))
+                   + ("｜跨对话补标 " + str(len(cross)) + " 张：" + ",".join(cross)[:120] if cross else ""))
         return "收口对账补标 " + ("；".join(hits) if hits else "0 行") \
-            + ("（拒写他人表 " + str(len(rej)) + " 张）" if rej else "")
+            + ("（其中跨对话 " + str(len(cross)) + " 张）" if cross else "")
     except Exception as e: return "收口对账跳过：" + str(e)[:80]
 
 
