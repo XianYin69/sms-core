@@ -34,8 +34,8 @@ def _http_error(code=401):
 
 # ---------- 1) key source: empty env must not shadow config key ----------
 def test_empty_env_does_not_shadow_config_key(monkeypatch):
-    sms = os.path.join(os.environ.get("LOCALAPPDATA", ""), "SMS")
-    conf = json.load(io.open(os.path.join(sms, "config", "config.json"), encoding="utf-8"))
+    import resolve_home
+    conf = json.load(io.open(os.path.join(resolve_home.ensure(), "config", "config.json"), encoding="utf-8"))
     base = conf.get("llm_gateway") or {}
     env_name = base.get("api_key_env")
     cfg_key = base.get("api_key") or ""
