@@ -13,7 +13,9 @@ def _row_fn(doc, subs, lk, cnt, tid, parent, own_ids=None):
     后台派发线程与模型本地自办行（task_plan status）同轮写同一张总览时不再互相整表覆盖丢更新。"""
     def one(st):
         ac.adopt(parent); stop.check()
-        sid, _ = skill_route.route(st["goal"]); sk = (sid or "").split(",")[0] or None
+        sk = str(st.get("skill") or "").strip() or None  # 行上已指定技能优先（task_plan skill=／预标），不被关键词路由清空（与 chan() 口径一致）
+        if not sk:
+            sid, _ = skill_route.route(st["goal"]); sk = (sid or "").split(",")[0] or None
         with lk:
             if sk: cnt[sk] = cnt.get(sk, 0) + 1
             st["skill"] = sk
