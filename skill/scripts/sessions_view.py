@@ -5,7 +5,8 @@
 时间（session 链 member→sess 边碎片 max ts）与未完成表行数；conflicts(cur) 列其他 session 的
 未完成 task_table 与同技能跨会话并行（冲突线索·只报告不代裁）；overview(cur) 全量文本；
 hint(cur) 一行提示——存在跨会话未完成时由 chains.conversation 注入〔会话拓扑〕，各对话据此负
-监视/训诫之责（提示用户 :session use 接续或 task_plan 收口，勿越会话代改他人表）；多壳并行＝
+监视/训诫/收口之责（批50：已完成未打标行系统自动跨对话补标，不要求用户 :session use 切换会话；
+确未完成的行直接 task_plan 显式 tid 完成或说明由所属会话推进，不新建同义表）；多壳并行＝
 各壳以 env SMS_SESSION 绑定自己的 session。纯读不落盘。用法：python -B sessions_view.py
 overview|conflicts|hint
 
@@ -132,8 +133,9 @@ def overview(cur="", sn=None):
     return "\n".join(ls) if len(ls) > 1 else "〔会话拓扑〕暂无登记 session（:session new 新建会话＝新 session）"
 
 
-HINT_TAIL = ("\n——你是对等对话的监视者·指导者·训诫者：提醒用户 :session use <id> 接续或 "
-             "task_plan 收口他人表，未经用户确认不越会话代改")
+HINT_TAIL = ("\n——你是对等对话的监视者·指导者·训诫者（批50 跨对话完成口径）：已完成未打标的跨会话行由系统自动补标"
+             "（对账/派发回写），不要求用户 :session use 切换会话去完成；确认未完成的行可直接用 task_plan（显式 tid）"
+             "完成或按完成证据对账，或说明由所属会话推进，不新建同义表、不越权改他人行内容。")
 
 
 def hint(cur=""):

@@ -132,7 +132,7 @@
     "enabled": true,
     "auto_start": true,
     "attach_gateway": true,
-    "root": "C:\\UserSpace\\EthanYan\\Developin\\llm-router",
+    "root": "C:\\UserSpace\\EthanYan\\Developin\\smsocket",
     "config": "config.yaml",
     "host": "127.0.0.1",
     "port": 8011,

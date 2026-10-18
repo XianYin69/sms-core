@@ -560,12 +560,12 @@ DF.ws=async b=>{const r=await api("/api/info");const cur=(r.workspace||"");
 DF.sessions=async b=>{const r=await api("/api/sessions");
  if(r.err){b.innerHTML="<div class='hint'>会话数据不可用："+esc(r.err)+"</div>";return jam("会话拓扑不可用")}
  const ss=r.sessions||r.items||r.list||[];
- b.innerHTML="<div class='hint'>session "+ss.length+" 个（通道 client/web/remote/cron/bg·每通道各占 session·session 下挂多 conv）· 未完成行＝跨会话冲突（对等监视）· 接续：:session use &lt;id&gt;</div>";
- const t=document.createElement("table");t.innerHTML="<tr><th>id</th><th>通道</th><th>conv</th><th>创建</th><th>未完成</th><th>当前</th><th></th></tr>";
- (Array.isArray(ss)?ss:Object.keys(ss).map(k=>Object.assign({id:k},ss[k]))).forEach(s=>{const tr=document.createElement("tr");
-  const un=s.unfinished==null?(s.rows?Object.keys(s.rows).filter(x=>s.rows[x].status!=="done").length:0):s.unfinished;
-  tr.innerHTML="<td>"+esc(s.id||s.session||"-")+"</td><td>"+esc(s.kind||"shell")+"</td><td title='"+esc((s.convs||[]).join(" "))+"'>"+esc(s.conv_count!=null?s.conv_count:(s.convs||[]).length)+"</td><td>"+esc(s.created||s.at||"-")+"</td><td>"+esc(un)+"</td><td>"+esc(s.current?"●":"")+"</td><td><button class='key sm'>接续</button></td>";
-  tr.querySelector("button").onclick=()=>setCmd(":session use "+(s.id||s.session||""));t.appendChild(tr)});
+b.innerHTML="<div class='hint'>session "+ss.length+" 个（通道 client/web/remote/cron/bg·每通道各占 session·session 下挂多 conv）· 跨会话未完成＝已完成未打标行系统自动补标·确未完成可用 task_plan 显式 tid（点击行尾按钮仅查看/切换该会话，非完成前置条件）</div>";
+  const t=document.createElement("table");t.innerHTML="<tr><th>id</th><th>通道</th><th>conv</th><th>创建</th><th>未完成</th><th>当前</th><th></th></tr>";
+  (Array.isArray(ss)?ss:Object.keys(ss).map(k=>Object.assign({id:k},ss[k]))).forEach(s=>{const tr=document.createElement("tr");
+   const un=s.unfinished==null?(s.rows?Object.keys(s.rows).filter(x=>s.rows[x].status!=="done").length:0):s.unfinished;
+   tr.innerHTML="<td>"+esc(s.id||s.session||"-")+"</td><td>"+esc(s.kind||"shell")+"</td><td title='"+esc((s.convs||[]).join(" "))+"'>"+esc(s.conv_count!=null?s.conv_count:(s.convs||[]).length)+"</td><td>"+esc(s.created||s.at||"-")+"</td><td>"+esc(un)+"</td><td>"+esc(s.current?"●":"")+"</td><td><button class='key sm'>切换</button></td>";
+   tr.querySelector("button").onclick=()=>setCmd(":session use "+(s.id||s.session||""));t.appendChild(tr)});
  b.appendChild(t);
  const bar=document.createElement("div");bar.className="bar";
  [["新建会话",":session new "],["清单",":session list"],["仅看冲突",":session conflicts"]].forEach(([l,c])=>{

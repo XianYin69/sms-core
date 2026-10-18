@@ -105,7 +105,7 @@ def spawn(sms=None, wait=None):
         return "拉起中（另一线程已在拉起）"
     root = c.get("root") or ""
     if not os.path.isfile(os.path.join(root, "run.py")):
-        _T["fail"] = time.time(); return "失败：smsocket.root 未配置或无 run.py（:config set smsocket.root \"C:\\...\\llm-router\"）"
+        _T["fail"] = time.time(); return "失败：smsocket.root 未配置或无 run.py（:config set smsocket.root \"C:\\...\\smsocket\"）"
     sms = sms or resolve_home.ensure()
     argv = [sys.executable, "-B", os.path.join(root, "run.py"),
             "--config", os.path.join(root, c.get("config") or DEF["config"])]
@@ -258,7 +258,7 @@ def doctor(sms=None):
     if not st["up"]:
         return dict(st, probe="网关未就绪（:smsocket start）")
     import urllib.request
-    body = json.dumps({"model": settings.get("llm_gateway.model", "", sms) or "SCNet-Max",
+    body = json.dumps({"model": settings.get("llm_gateway.model", "", sms) or "auto",
                        "max_tokens": 32, "messages": [{"role": "user", "content": "只回答一个字：通"}]}).encode()
     hd = {"Content-Type": "application/json"}
     if key(sms):

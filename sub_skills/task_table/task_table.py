@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""task_table.py — 任务总览制表器（SMS 子技能 task_table·批49 编号制：只给任务树下的子节点分配层级编号（1、2、2.1…）·任务完全不编号·旧平铺设计废弃树为唯一设计·批12②·批14①复杂门控·批18 行数无上限＋主流程守卫·批22 模型裁量）：脚本标点粗分（task.decompose）只作「自动种子」——拆步≥2 且至少一步命中执行性技能时 attach() 先建种子表；批22：判简单时不再沉默，注入〔任务表·脚本未建〕一行把复杂判定权交还模型——模型判复杂即 task_plan op=plan（new_table·免用户写「制表」字样）自建表；〔任务表〕块命令模型据实改表（行数无上限·不得只跑一两行就停）按行推进·每步 task_plan status done·中途 add/remove/skill 改表；pending(conv)＝本对话未完成行清单供 gateway 主流程守卫续推（未完成不得收口·无依赖 task 工具并发·有依赖依序）；批29 子步骤并行真可用（task_res.py）：行资源声明 files=/dir=/reads=/port=/device=/skill= ＋冲突判定（写-写/写-读互斥·只读共享·端口设备互斥）＋ op=conflict 回传可并发/须串行分组 ＋ op=run 按互不冲突组并发批次执行（task.batch_parallel 上限·task.row_timeout 行级超时·失败隔离写 error 链）＋ eta 改批内最大值求和。批47 摸鱼根治（用户「你学会一直开新的任务表来摸鱼了是不是」·真源取证＝10-11 08:00/08:08/08:19 三张表 intent 全为看门狗补投文本，src=qq、conv 各不相同）：qq_stall.nudge 补投经 agent_stream.ask 投进数据流＝每次输入必开新 conv（红线17），旧版 attach() 把补投原文再标点粗分＝必建一张新种子表；而 pending() 只认 doc["conv"]==当前 conv、_mine() 又禁越会话回写，原表遂永远「未完成」，其新表自己也推不完 → 下轮再补投再建新表＝滚雪球（同一件事堆 3~4 张表＝看着像忙、实为摸鱼）。现 claim()＝按表尾号认领原表续推（同 session 才接管·claims 留痕·行内容零改·绝不另建，他 session 只提示 :session use，已收口只回免表提示）；plan() 垃圾行拒建（noop/纯表号/去符号不足4字，steps 传字符串不再逐字拆 n|o|o|p——实测幽灵表 task-20261011-095214-045 单行 goal=noop 即卡守卫）；sweep()＝补投残表/全垃圾表静默超时后逐行 stopped 落 archive；attach() 免表时若本 conv 已有在途表则列出（续推它、别开新表）。落 <SMS_HOME>/tasks/<id>.json＋msg_flow task 信封（顶栏进度/剩余·eta＝未完成行×latency 均值）。用法：python -B task_table.py plan <诉求>|new <步骤逗号分隔>|show <tid>|next <tid>|eta <tid>|status <tid> <行编号> <状态>|add <tid> <目标> [技能id]|remove <tid> <行编号>|skill <tid> <行编号> <技能id>|pending [conv]|stale [分钟]|reconcile [conv]|sweep [分钟]|claim <表尾号>|attach <文本>"""
+"""task_table.py — 任务总览制表器（SMS 子技能 task_table·批49 编号制：只给任务树下的子节点分配层级编号（1、2、2.1…）·任务完全不编号·旧平铺设计废弃树为唯一设计·批12②·批14①复杂门控·批18 行数无上限＋主流程守卫·批22 模型裁量）：脚本标点粗分（task.decompose）只作「自动种子」——拆步≥2 且至少一步命中执行性技能时 attach() 先建种子表；批22：判简单时不再沉默，注入〔任务表·脚本未建〕一行把复杂判定权交还模型——模型判复杂即 task_plan op=plan（new_table·免用户写「制表」字样）自建表；〔任务表〕块命令模型据实改表（行数无上限·不得只跑一两行就停）按行推进·每步 task_plan status done·中途 add/remove/skill 改表；pending(conv)＝本对话未完成行清单供 gateway 主流程守卫续推（未完成不得收口·无依赖 task 工具并发·有依赖依序）；批29 子步骤并行真可用（task_res.py）：行资源声明 files=/dir=/reads=/port=/device=/skill= ＋冲突判定（写-写/写-读互斥·只读共享·端口设备互斥）＋ op=conflict 回传可并发/须串行分组 ＋ op=run 按互不冲突组并发批次执行（task.batch_parallel 上限·task.row_timeout 行级超时·失败隔离写 error 链）＋ eta 改批内最大值求和。批47 摸鱼根治（用户「你学会一直开新的任务表来摸鱼了是不是」·真源取证＝10-11 08:00/08:08/08:19 三张表 intent 全为看门狗补投文本，src=qq、conv 各不相同）：qq_stall.nudge 补投经 agent_stream.ask 投进数据流＝每次输入必开新 conv（红线17），旧版 attach() 把补投原文再标点粗分＝必建一张新种子表；而 pending() 只认 doc["conv"]==当前 conv、_mine() 又禁越会话回写，原表遂永远「未完成」，其新表自己也推不完 → 下轮再补投再建新表＝滚雪球（同一件事堆 3~4 张表＝看着像忙、实为摸鱼）。现 claim()＝按表尾号认领原表续推（同 session 才接管·claims 留痕·行内容零改·绝不另建；批50 他 session 的表先按完成证据自动补标、确未完成才说明由所属会话推进，已不要求 :session use，已收口只回免表提示）；plan() 垃圾行拒建（noop/纯表号/去符号不足4字，steps 传字符串不再逐字拆 n|o|o|p——实测幽灵表 task-20261011-095214-045 单行 goal=noop 即卡守卫）；sweep()＝补投残表/全垃圾表静默超时后逐行 stopped 落 archive；attach() 免表时若本 conv 已有在途表则列出（续推它、别开新表）。落 <SMS_HOME>/tasks/<id>.json＋msg_flow task 信封（顶栏进度/剩余·eta＝未完成行×latency 均值）。用法：python -B task_table.py plan <诉求>|new <步骤逗号分隔>|show <tid>|next <tid>|eta <tid>|status <tid> <行编号> <状态>|add <tid> <目标> [技能id]|remove <tid> <行编号>|skill <tid> <行编号> <技能id>|pending [conv]|stale [分钟]|reconcile [conv]|sweep [分钟]|claim <表尾号>|attach <文本>｜批51 用户有明确指令或有处理复杂任务意图时必须建立任务节点（task_intent 判据·plan 必建·免模型裁量·纯问句/闲聊仍免表）"""
 import os, sys, json, time, re
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import resolve_home, chains, task as tsk, skill_route, settings, atomic_io, latency, msg_flow, qq_report, task_res as tr
 SMS = resolve_home.ensure(); GEN = ("general_answer", "constraint_arbiter"); TD = os.path.join(SMS, "tasks")
@@ -142,6 +142,23 @@ def _junk(g):
     return len(re.sub(r"[^0-9a-z\u4e00-\u9fff]", "", t.lower())) < 4
 
 
+# 批51 明确指令/复杂任务意图判据（plan 必建任务节点·纯问句/闲聊仍免表）
+_EXPL = re.compile(r"(帮我|帮我把|请|麻烦|把|将|做|写|创建|新建|生成|修改|更新|整理|分析|处理|执行|部署|设计|开发|实现|测试|检查|排查|调查|研究|制定|规划|准备|制作|翻译|转换|优化|重构|修复|解决|收集|汇总|统计|发布|安装|配置|初始化|搭建|组织|编排|拆分|合并|导出|导入|绘制|下载|上传|批量|自动|脚本|程序|任务|项目|方案|文档|报告|完成|清理|审计|验收|核对|核验|取证|验证|归档)", re.I)
+_CMPL = re.compile(r"(先.{0,12}(再|然后|随后)|分步|一步一步|分步骤|分阶段|步骤|按计划|计划|流程|阶段|环节|多步|多项|多个|逐一|依次|同时|并且|以及|包括|涉及|覆盖|完整|全套|整个|总共|全部|拆解|分解)", re.I)
+_ASK = re.compile(r"[？?]\s*$|(如何|怎么样|怎样|是什么|吗|呢|吧)\s*$|^(什么|怎么|如何|为啥|为什么|是否|哪|能不能|可否|有没有|请解释|解释一下)")
+
+
+def task_intent(text):
+    """批51：用户有「明确指令」或「处理复杂任务意图」＝必须建立任务节点——给的是要做的事（祈使/执行动词）
+    或多步骤/多事项/计划性表述（连词/顺序/枚举/≥3 个分句）；纯问句/闲聊/寒暄/垃圾文本＝免表直送。"""
+    t = str(text or "").strip()
+    if not t or _junk(t): return False
+    if _ASK.search(t): return False
+    if _CMPL.search(t): return True
+    if len([x for x in re.split(r"[，,。;；、\n]", t) if x.strip()]) >= 3: return True
+    return bool(_EXPL.search(t))
+
+
 def _maxn(subs):
     """表内最大行号＋1（新行编号真源）：并入/加行都从这里取号，避免与既有 t# 撞号（撞号即 DFS 去重丢行）。"""
     n = [int(str(x.get("id"))[1:]) for x in subs
@@ -242,7 +259,7 @@ def plan(intent, steps=None, parent=None, root=None, merge=True):
     raw = steps if steps is not None else tsk.decompose(str(intent))
     clean = [x for x in (raw or []) if not _junk(x["goal"] if isinstance(x, dict) else str(x))]
     subs = _rows(clean)
-    if steps is None and (len(subs) < 2 or not any(x["skill"] and x["skill"] not in GEN for x in subs)): return None
+    if steps is None and not task_intent(str(intent)) and (len(subs) < 2 or not any(x["skill"] and x["skill"] not in GEN for x in subs)): return None
     if not subs: return None
     if _tree_on() and merge:
         try:
@@ -378,7 +395,7 @@ def block(doc):
     if _tree_on():
         head += ("根任务 " + str(root.get("intent") or "")[:70]
                  + ("（本表是其延申·挂其之下）" if root.get("id") != doc.get("id") else "（本表即根任务）") + "\n")
-    return head + "\n".join(_rowline(doc, x) for x in (doc.get("subtasks") or [])) + "\n〔执行规则·任务总览〕批49 编号制：只给任务树下的子节点分配层级编号（1、2、2.1…·引用直接用编号·内部行号 t# 亦可），任务（根/延申表）完全不编号（tid 免填＝本对话在途表）；所有任务都是根任务的延申（表带 parent/root、行带 pid，层级≤task.tree_max_depth）；父行＝子步骤的汇总节点（状态自动 rollup·不派工·不计待办），拆子步骤用 op=add 传父行编号（第 4 参数＝父行编号）；目的相同的任务/步骤一律自动合并（建表前按 task.merge_sim 命中即并入原表·op=merge 手动并表，绝不另建同义新表）；行标〔发〕＝发送处理（调 skill 派对等对话）、〔本〕＝本地处理（exec/read/write/glob/grep 自办），两者连同父表/子表的兄弟步骤一起进同一并发批次：op=conflict（value=all＝跨表跨层级同判资源互斥）取分组、op=run（value=tree＝整棵树一次并发跑完·失败隔离只标该行），或用 task 工具 parallel=true；每完成一行立刻 op=status <行编号> done（任务不编号·tid 免填＝本对话在途表；顶栏进度/剩余时间据此刷新）；全部叶子行 done 才算实质完成（派发对话收口只是形式停止·批23）——禁止只跑一两行就停、禁止口头宣告完成。\n"
+    return head + "\n".join(_rowline(doc, x) for x in (doc.get("subtasks") or [])) + "\n〔执行规则·任务总览〕批49 编号制：只给任务树下的子节点分配层级编号（1、2、2.1…·引用直接用编号·内部行号 t# 亦可），任务（根/延申表）完全不编号（tid 免填＝本对话在途表）；所有任务都是根任务的延申（表带 parent/root、行带 pid，层级≤task.tree_max_depth）；父行＝子步骤的汇总节点（状态自动 rollup·不派工·不计待办），拆子步骤用 op=add 传父行编号（第 4 参数＝父行编号）；目的相同的任务/步骤一律自动合并（建表前按 task.merge_sim 命中即并入原表·op=merge 手动并表，绝不另建同义新表）；行标〔发〕＝发送处理（调 skill 派对等对话）、〔本〕＝本地处理（exec/read/write/glob/grep 自办），两者连同父表/子表的兄弟步骤一起进同一并发批次：op=conflict（value=all＝跨表跨层级同判资源互斥）取分组、op=run（value=tree＝整棵树一次并发跑完·失败隔离只标该行），或用 task 工具 parallel=true；每完成一行立刻 op=status <行编号> done（任务不编号·tid 免填＝本对话在途表；顶栏进度/剩余时间据此刷新）；全部叶子行 done 才算实质完成（派发对话收口只是形式停止·批23）——禁止只跑一两行就停、禁止口头宣告完成；用户有明确指令或有处理复杂任务意图时，建立任务节点是必须动作（批51·task_plan op=plan 先建表再推进）。\n"
 def attach(intent):
     """每轮注入的任务总览段（批47 三岔＋批48 合并优先）：①补投/接续文本＝claim 认领原总览续推（绝不另建）；
     ②标点粗分命中＝同目的自动并入既有总览、无同目的才建种子总览；
@@ -391,8 +408,9 @@ def attach(intent):
     mine = ""
     try: mine = pending(chains.ACTIVE.get("conv") or "")
     except Exception: pass  # noqa 提示性信息，取不到不拦提示词构建
-    return ("\n〔" + LABEL + "·脚本未建〕标点粗分判非复杂或无执行技能命中——复杂与否由你定：判定需≥2步动手执行时，"
-            "先 task_plan op=plan value=你拆的各步骤（逗号分隔）自建总览并按表推进；单步/问答直接办，勿为表而表；"
+    return ("\n〔" + LABEL + "·脚本未建〕标点粗分判非复杂或无执行技能命中——复杂与否由你定：当用户有明确指令或有处理"
+            "复杂任务意图时，必须建立任务节点：先 task_plan op=plan value=你拆的各步骤（逗号分隔）自建总览并按表推进；"
+            "纯问句/闲聊/单步问答可直接办，勿为表而表；"
             "同目的的既有总览会自动并入，无须自己找。"
             + ("本对话已有在途总览，续推它即可、禁止另开新表：" + mine + "\n" if mine else "\n"))
 def pending(conv=""):
@@ -470,7 +488,13 @@ def _reconcile_doc(doc):
     subs = doc.get("subtasks") or []; ch = []; since = _since(doc)
     for x in subs:
         if not open_row(x) or is_agg(doc, x): continue
-        if str(x.get("result") or "").strip() or _artifacts(x, since):
+        done_ev = str(x.get("result") or "").strip() or _artifacts(x, since)
+        # running 行：若同目标在其他表/归档已有 done＋result 证据，按完成证据自动补标（防进行中死循环）
+        if not done_ev and str(x.get("status")) == "running":
+            rt = _reuse_done(x.get("goal"))
+            if rt is not None:
+                x["result"] = rt; done_ev = True
+        if done_ev:
             x["status"] = "done"; x["auto"] = "reconcile"
             x["auto_at"] = time.strftime("%Y-%m-%d %H:%M:%S"); ch.append(str(x["id"]))
     return ch
@@ -853,7 +877,7 @@ def revise(op, tid="", row="", value=""):
 if __name__ == "__main__":
     a = sys.argv[1:]
     if not a: print(__doc__.strip().splitlines()[-1])
-    elif a[0] == "plan" and len(a) > 1: d = plan(" ".join(a[1:])); print(block(d) if d else "判非复杂或无执行技能命中——免表直送（模型判多步即 task_plan op=plan value=步骤逗号分隔）")
+    elif a[0] == "plan" and len(a) > 1: d = plan(" ".join(a[1:])); print(block(d) if d else "判非复杂或无执行技能命中——明确指令/复杂任务意图须 task_plan op=plan value=步骤逗号分隔 建任务节点")
     elif a[0] == "new" and len(a) > 1: print(new_table("模型自建表", _steps(a[1])))
     elif a[0] == "pending": print(pending(a[1] if len(a) > 1 else "") or "无未完成行")
     elif a[0] == "stale": print(stale_requeue(float(a[1]) if len(a) > 1 else None))
