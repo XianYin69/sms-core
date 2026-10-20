@@ -3,7 +3,7 @@
 import no_window  # 静默子进程：前台运行任务不弹命令行窗口
 import os, sys, shutil, subprocess, time, re
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import resolve_home, chains, dream, qq_flow, qq_boot, gateway, model_meta, tts, skill_route, prompt_builder, prompt_pack, workspace as ws, agent_tools as at, shell_resume as sr, stop_channel as stop, agent_task as atk, task_table as tt, chain_timing as ct, shell_lifecycle as lc, run_watch as rw
+import resolve_home, chains, dream, qq_flow, qq_boot, gateway, model_meta, tts, skill_route, prompt_builder, prompt_pack, workspace as ws, agent_tools as at, shell_resume as sr, stop_channel as stop, agent_task as atk, task_table as tt, chain_timing as ct, shell_lifecycle as lc, run_watch as rw, ctx_compress
 SMS = resolve_home.ensure(); STATE = os.path.join(SMS, "shell")
 ADAPTERS = {"claude": {"bin": "claude", "args": ["-p"]}, "codex": {"bin": "codex", "args": ["exec"]}, "cursor": {"bin": "cursor-agent", "args": []}, "kilocode": {"bin": "kilocode", "args": ["run"]}, "kilo": {"bin": "kilo", "args": ["run"]}, "aider": {"bin": "aider", "args": ["--message"]}}
 def adapters():
@@ -86,6 +86,8 @@ def ask(text, on_line, st=lambda n: None, ev=None):
             # 2026-10-15：st 先于 chains.conversation——旧版把记忆组装放在状态上报之前，
             # 用户侧看到的是「提示词构建」卡住 450ms 才跳到网关流式执行；现在状态先行，
             # 压缩记忆组装（冷启 all_frags ~400ms / warm ~50ms）在用户已看到提示后台进行。
+            # 并行：实时上下文压缩（无损合并＋有损丢弃无用，基于搜索引用集，不阻塞前台）
+            cc_th = ctx_compress.maybe(SMS, text, on_line=on_line)
             # Phase 1：任务理解——不注入技能列表，只携带记忆+规则+用户输入
             body1 = sr.prefix() + tt.attach(text) + (text if not prefix_on() else chains.conversation(text, raw=text))
             resp1 = gateway.run(body1, on_line, ev=ev)
