@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## [2026-10-20]
+### Added
+- agent_stream 两阶段理解＋关键词泛洪：新增 `_extract_operation_keywords()`（从第一阶段理解回复抽取技能/工具/记忆操作关键词）与 `_inject_skill_summaries()`（按关键词仅注入命中的 top3 技能摘要，不再整表灌入）；`chains.conversation()` 新增 `pre` 形参承载该注入段。
+- 涉及文件：`skill/scripts/agent_stream.py`、`skill/scripts/chains.py`
+- 违反后果：上下文塞入全量技能目录 → token 浪费、路由命中率与派发裁量被噪声淹没。
+
+### Changed
+- `prompt_pack.pack()` 新增 `keywords` 形参：以操作关键词作向量种子做泛洪（DFS 未命中时回退全量扫描仍走同一关键词种子），提升相关记忆碎片召回。
+- `skill_route.route()` 未命中提示瘦身：去掉逐条技能表全文，只留「可用技能参考（供裁量，不必逐条列出）」，与新的按需注入口径一致。
+- `compose()` 调整拼装顺序（init 后置）；`task_table` 行级技能预标随动精简。
+- 涉及文件：`skill/scripts/prompt_pack.py`、`skill/scripts/skill_route.py`、`skill/scripts/agent_stream.py`、`sub_skills/task_table/task_table.py`
+- 违反后果：提示与注入段重复、每轮上下文膨胀。
+
+### Verified
+- 五个改动文件 `py_compile` 全通过；正式版分支 main 已推送远端，并回流 tech-preview（开发测试环境技术预览分支）。
+
 ## [2026-10-19]
 ### Fixed
 - 修复 spin_guard 空转自愈误杀任务（用户报障「修复莫名奇妙的 spin-guard 空转自愈导致任务停止」）：
@@ -22,4 +38,4 @@
 
 ---
 
-*最后更新：2026-10-19 | 分支收口 main*
+*最后更新：2026-10-20 | 分支收口 main + tech-preview 回流*
