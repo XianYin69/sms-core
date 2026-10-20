@@ -429,8 +429,6 @@ def pending(conv=""):
         _STALE_TS[0] = time.time()
         try: stale_requeue()
         except Exception: pass  # noqa 自愈失败不影响守卫
-        try: reconcile()  # 批50：周期对账——已完成未打标行即时补标（含跨对话），守护不再死循环
-        except Exception: pass  # noqa 对账失败不影响守卫
     c = conv or chains.ACTIVE.get("conv") or ""; out = []
     for tid in ([fn[:-5] for fn in sorted(os.listdir(TD)) if fn.endswith(".json")] if os.path.isdir(TD) else []):
         doc = _load(tid); rest = guard_rows(doc, bool(doc) and doc.get("conv") == c)
@@ -494,20 +492,15 @@ def _subtasks_inherit(subs):
 
 
 def _reconcile_doc(doc):
-    """单表收口对账（批50 抽核，供 reconcile/claim/pending 共用）：非终态叶子行 result 非空或写资源本轮新落盘
-    （mtime≥表 created·批33 新鲜度）→ 置 done＋auto="reconcile"。回被补行 id 列表。"""
-    subs = doc.get("subtasks") or []; ch = []; since = _since(doc)
+    """单表收口对账（批50 抽核）：仅对有显式 result 内容的非终态叶子行补标 done，
+    不以文件产物（可能先存在）或跨表复用结果作为单独证据，防止过早收口。"""
+    subs = doc.get("subtasks") or []; ch = []
     for x in subs:
         if not open_row(x) or is_agg(doc, x): continue
-        done_ev = str(x.get("result") or "").strip() or _artifacts(x, since)
-        # running 行：若同目标在其他表/归档已有 done＋result 证据，按完成证据自动补标（防进行中死循环）
-        if not done_ev and str(x.get("status")) == "running":
-            rt = _reuse_done(x.get("goal"))
-            if rt is not None:
-                x["result"] = rt; done_ev = True
-        if done_ev:
-            x["status"] = "done"; x["auto"] = "reconcile"
-            x["auto_at"] = time.strftime("%Y-%m-%d %H:%M:%S"); ch.append(str(x["id"]))
+        result = str(x.get("result") or "").strip()
+        if not result: continue
+        x["status"] = "done"; x["auto"] = "reconcile"
+        x["auto_at"] = time.strftime("%Y-%m-%d %H:%M:%S"); ch.append(str(x["id"]))
     return ch
 
 

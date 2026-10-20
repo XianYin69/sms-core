@@ -82,7 +82,7 @@ def route(text, sms=None):
     if hs:
         g = "；".join("%s→%s" % (s.get("id"), os.path.join(str(s.get("install_path", "")), str(s.get("entry", "SKILL.md")))) for s in hs)
         return ",".join(str(s.get("id")) for s in hs), "[SMS 路由·参考] 关键词打分命中（" + g + "·产物目标＝工作区 tmp：" + resolve_home.wtmp() + "）——本行仅供参考，是否派 skill 工具开对等对话真执行（按其 SKILL.md）由你结合话语自主决定；纯问答/解释可直接作答不必派发；确不采纳时简要说明理由即可。"
-    return None, "[SMS 路由·参考] 关键词未命中。你可直答（简短·用户语言·内部英语处理）或对照下表/索引择最相关技能用 skill 工具真执行。**判复杂且无现成技能可做的动手诉求（要读写/调设备/跑脚本）：先经 skill 工具派发 Skill_Generator（create 路径）按需新建技能，再回来派发执行——不要因「没找到技能」就空口声称已做或拒绝。** 下表为已装技能，命中与否、直答还是派发或新建，均由你结合意图自主决定，禁止空口声称已执行。" + catalog(sms)
+    return None, "[SMS 路由·参考] 关键词未命中。你可直答（简短·用户语言·内部英语处理）或对照下表/索引择最相关技能用 skill 工具真执行。**判复杂且无现成技能可做的动手诉求（要读写/调设备/跑脚本）：先经 skill 工具派发 Skill_Generator（create 路径）按需新建技能，再回来派发执行——不要因「没找到技能」就空口声称已做或拒绝。** 可用技能参考（供裁量，不必逐条列出），命中与否、直答还是派发或新建，均由你结合意图自主决定，禁止空口声称已执行。" + catalog(sms)
 if __name__ == "__main__":
     a = sys.argv[1:] or ["list"]
     if a[0] == "list": print(listtext())

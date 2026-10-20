@@ -55,18 +55,18 @@ def _hits(store, qv, sess=None):
                 sc.append([q[0] * 0.6, e[0], nb.get("freq", 1), nb["text"]])
     _hits_cache["key"] = key; _hits_cache["t"] = now; _hits_cache["val"] = sc
     return sc
-def pack(text, max_chars=1200, sms=None, sess=None):
+def pack(text, max_chars=1200, sms=None, sess=None, keywords=None):
     try:
-        r = chain_dfs.expand(text, max_chars, 3, sms, sess)
+        # 关键词泛洪种子：用操作关键词做向量种子，命中相关记忆碎片，沿语义/因果边＋3D空间邻格做 BFS 深扩展
+        q = keywords or text
+        r = chain_dfs.expand(q, max_chars, 3, sms, sess)
         if r and r != "（暂无压缩记忆）": return r
-        # DFS 未命中＝seeds_for 无余弦>0 的候选，_hits 口径相同也会空——直接回空，
-        # 不再二次全量扫描（实测 1.3s/轮·32K 碎片逐条 cos＋邻接展开纯浪费）。
-        if r == "（暂无压缩记忆）": return r
     except Exception as e:
         import debug; debug.error("prompt_pack DFS fallback: " + str(e)[:200], sms)
     store = cs.Store(sms or resolve_home.ensure())
+    qv = cs.vec(keywords or text)
     out, used, seen = [], 0, set()
-    for sc, fid, fr, t in sorted(_hits(store, cs.vec(text), sess), reverse=True):
+    for sc, fid, fr, t in sorted(_hits(store, qv, sess), reverse=True):
         if fid in seen: continue
         seen.add(fid); store.bump(fid)
         if used + len(t) > max_chars: break

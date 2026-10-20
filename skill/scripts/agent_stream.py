@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """agent_stream.py — sms-shell 数据流引擎（批16 LLM 主导）：默认直达系统原生网关（config llm_gateway.enabled→gateway），网关未启用才回退已装 agent CLI；每次输入＝开新对话（红线 17），会话层 chains.set_active(conv/sess)＋session/dialogue 碎片打 member→sess 边；工作区＝gateway exec 与 agent CLI 的 cwd；技能路由不再脚本裁决——skill_route 打分命中仅作〔参考〕注入（记 skill_call 链供审计），直答还是派发由模型在 gateway 工具循环内自主决定（批15 前「命中即自动开子会话扇出」已废除）；未命中→chains.conversation 压缩记忆＋对话规则（批23 对等对话·互任监视/指导/训诫）＋〔会话拓扑〕（他 session 未完成/冲突监视提示）＋SKILL.md 索引＋治理注入送网关；话语/工具/技能/任务输出全程 msg_flow 信封（on_line 人读行＋ev 回调供 TUI 顶栏进度）；各阶段步骤名经 st 回调上报；尾行 [图:<路径>] 为网关视觉附图；状态存 <SMS_HOME>/shell/；皆无执行器则拒绝并引导配置（未检出执行器时不得空口作答）。"""
 import no_window  # 静默子进程：前台运行任务不弹命令行窗口
-import os, sys, shutil, subprocess, time
+import os, sys, shutil, subprocess, time, re
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import resolve_home, chains, dream, qq_flow, qq_boot, gateway, model_meta, tts, skill_route, prompt_builder, workspace as ws, agent_tools as at, shell_resume as sr, stop_channel as stop, agent_task as atk, task_table as tt, chain_timing as ct, shell_lifecycle as lc, run_watch as rw
+import resolve_home, chains, dream, qq_flow, qq_boot, gateway, model_meta, tts, skill_route, prompt_builder, prompt_pack, workspace as ws, agent_tools as at, shell_resume as sr, stop_channel as stop, agent_task as atk, task_table as tt, chain_timing as ct, shell_lifecycle as lc, run_watch as rw
 SMS = resolve_home.ensure(); STATE = os.path.join(SMS, "shell")
 ADAPTERS = {"claude": {"bin": "claude", "args": ["-p"]}, "codex": {"bin": "codex", "args": ["exec"]}, "cursor": {"bin": "cursor-agent", "args": []}, "kilocode": {"bin": "kilocode", "args": ["run"]}, "kilo": {"bin": "kilo", "args": ["run"]}, "aider": {"bin": "aider", "args": ["--message"]}}
 def adapters():
@@ -20,7 +20,36 @@ def current():
 def prefix_on(): return _state("skill_prefix", "on") != "off"
 def use(name): _put("current_agent", name); return "切到 agent：" + name + ("" if name in detected() else "（未检出其 CLI——配置 agent_cli {bin,args} 并确保在 PATH）")
 def skill(on): _put("skill_prefix", "on" if on else "off"); return "smsystem-suit 前缀：" + _state("skill_prefix", "on")
-def compose(text, sms=None): return prompt_builder.init(sms or SMS) + "\n\n" + prompt_builder.build(text, sms or SMS)
+def _extract_operation_keywords(resp):
+    """从第一阶段理解回复中提取操作关键词（技能/工具/记忆）。"""
+    if not resp: return ""
+    kws = set()
+    for m in re.finditer(r"(?:关键词|关键字|技能|工具|记忆|需要|涉及|操作)[：:]\s*([^。；\n]+)", str(resp)):
+        seg = m.group(1)
+        for w in re.split(r"[，,、/、\s+]", seg):
+            w = w.strip()
+            if len(w) >= 2: kws.add(w)
+    if not kws:
+        for w in re.findall(r"[a-zA-Z][a-zA-Z0-9_\-]{2,}|\u4e00-\u9fff{2,}", str(resp)):
+            if len(w) >= 2: kws.add(w)
+    return " ".join(sorted(kws))[:300]
+def _inject_skill_summaries(keywords, sms):
+    """基于关键词注入相关技能摘要（不注入全表，仅命中项）。"""
+    if not keywords: return ""
+    try:
+        ranked, thr = skill_route._rank(keywords, sms)
+        hs = [s for sc, s in ranked if sc >= thr][:3]
+        if not hs: return ""
+        lines = []
+        for s in hs:
+            sid = str(s.get("id", ""))
+            desc = re.sub(r"\s+", "", str(s.get("description", "")))[:80]
+            ip = str(s.get("install_path", "")); en = str(s.get("entry", "SKILL.md"))
+            lines.append("%s：%s（%s）" % (sid, desc, os.path.join(ip, en)))
+        return "\n".join(lines)
+    except Exception:
+        return ""
+def compose(text, sms=None): return prompt_builder.build(text, sms or SMS) + "\n\n" + prompt_builder.init(sms or SMS)
 def _edge(conv): return [[conv, "ref", 1], [chains.cur_sess(), "member", 1]]
 def _consume(on_line):
     """批32 R1/R3/R5：本轮收口处消费大模型经 exec 登记的 restart/shutdown——壳内硬退（os._exit）前
@@ -57,10 +86,25 @@ def ask(text, on_line, st=lambda n: None, ev=None):
             # 2026-10-15：st 先于 chains.conversation——旧版把记忆组装放在状态上报之前，
             # 用户侧看到的是「提示词构建」卡住 450ms 才跳到网关流式执行；现在状态先行，
             # 压缩记忆组装（冷启 all_frags ~400ms / warm ~50ms）在用户已看到提示后台进行。
-            body = sr.prefix() + tt.attach(text) + (text if not prefix_on() else chains.conversation(compose(text, SMS) + "\n\n" + inj, raw=text))
-            bl = body.split("\n"); imgs = None
-            if bl[-1].startswith("[图:") and bl[-1].endswith("]"): p = bl[-1][3:-1].strip(); body = "\n".join(bl[:-1]); imgs = [p] if os.path.isfile(p) else None
-            resp = gateway.run(body, on_line, images=imgs, ev=ev); sr.flag() and sr.append(text, str(resp or "（本轮网关中断·任务未必完成——下轮据接续与任务总览继续推进）"))
+            # Phase 1：任务理解——不注入技能列表，只携带记忆+规则+用户输入
+            body1 = sr.prefix() + tt.attach(text) + (text if not prefix_on() else chains.conversation(text, raw=text))
+            resp1 = gateway.run(body1, on_line, ev=ev)
+            # 提取操作关键词（技能/工具/记忆）
+            keywords = _extract_operation_keywords(resp1 or "")
+            # Phase 2：基于关键词注入技能摘要 + 泛洪记忆召回（不再全量注入 SKILL.md 索引）
+            skill_summaries = _inject_skill_summaries(keywords, SMS)
+            flood_memory = prompt_pack.pack(text, 1200, sms=SMS, sess=cur_sess(), keywords=keywords)
+            pre_parts = []
+            if skill_summaries: pre_parts.append("[技能摘要注入]\n" + skill_summaries)
+            if flood_memory and flood_memory != "（暂无压缩记忆）": pre_parts.append("[压缩记忆·泛洪召回]\n" + flood_memory)
+            if inj: pre_parts.append("[SMS 路由·参考]\n" + inj)
+            pre = "\n\n".join(pre_parts) if pre_parts else ""
+            body2 = sr.prefix() + tt.attach(text) + chains.conversation(text, raw=text, pre=pre)
+            if resp1: body2 += "\n\n[第一阶段·任务理解]\n" + str(resp1)[:1500]
+            bl2 = body2.split("\n"); imgs2 = None
+            if bl2[-1].startswith("[图:") and bl2[-1].endswith("]"): p2 = bl2[-1][3:-1].strip(); body2 = "\n".join(bl2[:-1]); imgs2 = [p2] if os.path.isfile(p2) else None
+            resp2 = gateway.run(body2, on_line, images=imgs2, ev=ev)
+            sr.flag() and sr.append(text, str(resp2 or "（本轮网关中断·任务未必完成——下轮据接续与任务总览继续推进）"))
         else:
             st("agent CLI 执行：" + ag); args = list(spec.get("args", []))
             # 批32 R4：显式钉死 SMS_HOME——exec 子进程 request 与壳 run_pending 写读同一 lifecycle.json
