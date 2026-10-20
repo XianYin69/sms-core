@@ -55,7 +55,8 @@ def _read_pend():
         if not (doc and rest): continue
         out.append({"tid": doc.get("id", fn[:-5]), "sess": doc.get("sess") or "?",
                     "conv": doc.get("conv") or "", "rows": len(rest), "total": len(subs),
-                    "skills": sorted({str(x.get("skill") or "工具自办") for x in rest})})
+                    "skills": sorted({str(x.get("skill") or "工具自办") for x in rest}),
+                    "intent": str(doc.get("intent") or "")[:40]})
     return out
 
 
@@ -115,8 +116,8 @@ def conflicts(cur="", sn=None):
     for p in pend:
         for sk in p["skills"]: by.setdefault(sk, set()).add(p["sess"])
     multi = ["%s（跨 %s）" % (k, "、".join(sorted(v))) for k, v in sorted(by.items()) if len(v) > 1]
-    ls = ["跨会话未完成：" + "；".join("表 %s@%s 余 %d/%d 行〔conv %s〕"
-         % (p["tid"][-14:], p["sess"], p["rows"], p["total"], p["conv"][-15:]) for p in other)]
+    ls = ["跨会话未完成：" + "；".join("表 %s@%s 余 %d/%d 行〔%s〕〔conv %s〕"
+         % (p["tid"][-14:], p["sess"], p["rows"], p["total"], p.get("intent", "")[:24], p["conv"][-15:]) for p in other)]
     multi and ls.append("同技能跨会话并行（先后/冲突注意）：" + "；".join(multi))
     return "\n".join(ls)
 

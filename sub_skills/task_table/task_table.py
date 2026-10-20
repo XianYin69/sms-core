@@ -276,9 +276,15 @@ def plan(intent, steps=None, parent=None, root=None, merge=True):
 
 
 RESUME = re.compile(r"(?:继续当前任务(?:总览|表)?未完成行|〔认领表)[^0-9A-Za-z_-]{0,14}([0-9A-Za-z_-]{6,24})")
+_RESUME_INTENT = re.compile(r"继续|之前|上次|接着|沿用|接续|再次|续做|续推", re.I)
 def _claim_tid(text):
     m = RESUME.search(str(text or ""))
     return (m.group(1) or "").strip() if m else ""
+def _resume_intent(text):
+    """「继续/之前/上次任务」类接续意图，无具体表号时由 attach() 自动认领本 session 最新在途表。"""
+    t = str(text or "").strip()
+    if not t or _ASK.search(t): return False
+    return bool(_RESUME_INTENT.search(t))
 
 
 def claim(text="", tid="", conv=""):
@@ -403,6 +409,11 @@ def attach(intent):
     if not settings.get("task.auto_table", True): return ""
     c = claim(text=str(intent or ""))
     if c: return "\n" + c + "\n"
+    # 接续意图但无具体表号：自动认领本 session 最新在途表（续推，不另建新表）
+    if _resume_intent(intent):
+        t = _latest()
+        if t:
+            return claim(text="", tid=t) or ""
     d = plan(intent)
     if d: return block(d)
     mine = ""

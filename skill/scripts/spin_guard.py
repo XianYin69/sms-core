@@ -11,13 +11,22 @@
 
 本模块补壳自身：① faulthandler 全程开（dump_traceback_later 独立线程，GIL 被死循环攥着
 也能抓栈）；② 活性只认真进展（输出行/产物落盘/任务总览行 done），UI 定时器自转不算进展；
-③ 判自旋即分级：抓栈→藏 #prog 停动画（立刻还核子）→stop_channel 停在轮→仍不止则
-shell_lifecycle.restart 自愈。零焦点侵入：不动前台窗口/不动光标/不激活窗口。
+③ 判自旋即分级：抓栈→藏 #prog 停动画（立刻还核子）→反复重置 hide_req→到 spin_selfheal_hits
+才 shell_lifecycle.restart 自愈。零焦点侵入：不动前台窗口/不动光标/不激活窗口。
 批29 修（2026-10-03 22:49 取证）：旧 arm() 的 dump_traceback_later(repeat=True)
 与「有无进展」无关，每个壳每 120s 无条件把全线程栈灌进 spin.log
 （现场 3.8MB/5261 段空闲栈，真自旋被噪声淹没）。
 现改进展驱动：_watch 判可疑才挂一次性转栈，beat() 真进展即撤销；
 spin.log 另加体积封顶轮转（shell.spin_log_max_kb 默认 512KB 只留尾部）。
+批41 修（2026-10-19 用户「修复莫名奇妙的 spin-guard 空转自愈导致任务停止」）：
+旧版 hit#2 直接 stop_channel.request("spin-guard 空转自愈")，但守护线程未绑任务 →
+触发**广播停止**＝停掉全部在跑任务（spin.log 实证 19:04/19:20 两次 hit#2 广播停·
+用户报障的直接根因）。另网关 LLM 请求返回后 STAGE 已 clear → _legit_wait() 回 False →
+壳处理响应/构建上下文期间（高 CPU 无逐行输出）被误判 spin（hit#1 cpu=750 silent=64）。
+现：① hit#2 删广播停、改反复重置 hide_req（幂等·UI tick 消费藏 #prog）；
+② 新增合法长等待宽限期 spin_legit_grace_s（默认 120s）：_legit_wait() 为真即记 last_legit，
+退出长等待后该窗口内不判自旋/不升级处置；
+③ 重启阈值由 hit#3 提至 spin_selfheal_hits（默认 6＝30s 持续自旋·5s tick×6）。
 用法：python -B spin_guard.py status|probe <pid>|selftest"""
 import os, sys, time, json, ctypes, threading
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -32,7 +41,8 @@ def _cfg(k, d):
         import settings; return float(settings.get("shell." + k, d))
     except Exception: return float(d)
 ST = {"beat": time.time(), "bkind": "boot", "app": None, "cpu": 0.0, "silent": 0.0,
-      "verdict": "ok", "hits": 0, "armed": False, "hide_req": False, "last_ext": 0.0, "tid": ""}
+      "verdict": "ok", "hits": 0, "armed": False, "hide_req": False, "last_ext": 0.0, "tid": "",
+      "last_legit": 0.0}  # last_legit＝最近一次 _legit_wait() 为真的时刻，用于退出合法长等待后的宽限期
 _LEGIT = {"longs": None, "mx": 0.0}  # 合法长等待判据缓存：arm 时算一次（LONG_STAGES 集合＋t3 硬上限），热循环只读不落盘
 _FH = {"fh": None, "path": "", "armed": False, "until": 0.0, "fired": 0.0, "susp": False}
 class _FT(ctypes.Structure):
@@ -179,7 +189,13 @@ def arm(app=None, tick_s=None):
     threading.Thread(target=_watch, args=(tick_s or _cfg("spin_tick_s", 5.0),), daemon=True, name="spin-guard").start()
     return status()
 def _escalate(s):
-    """分级处置：①抓栈＋记链＋通报 ②藏 #prog 停 15fps 动画 ③停在轮 ④重启自愈。"""
+    """分级处置：①抓栈＋记链＋通报 ②藏 #prog 停 15fps 动画（反复重置·幂等） ③重启自愈。
+    旧版 hit#2 直接 stop_channel.request("spin-guard 空转自愈")，但 spin_guard 守护线程未绑任何
+    任务 → stop_channel._key() 回空 → 触发**广播停止**＝停掉全部在跑任务（用户报障
+    「spin-guard 空转自愈导致任务停止」的根因·spin.log 实证 19:04/19:20 两次 hit#2 广播停）。
+    hit#1 已藏 #prog＝Textual UI 自旋死循环的根治（原现场就是进度条 15fps 整屏重绘），
+    广播停任务既不治自旋又误杀并行任务——删除，改反复重置 hide_req（UI tick 消费·幂等），
+    到 spin_selfheal_hits（默认 6＝30s 持续自旋）才重启。"""
     n = int(s.get("hits") or 0)
     cpu = float(s.get("cpu_ms_per_s") or 0.0); sil = float(s.get("silent_s") or 0.0)
     bk = str(s.get("last_beat") or "")   # 键名以 status() 为准（旧代码 s["cpu"]/s["silent"]/s["bkind"] 必 KeyError）
@@ -193,12 +209,10 @@ def _escalate(s):
         except Exception: pass
         ST["hide_req"] = True                       # UI tick 消费→藏 #prog（跨线程只置标志）
     if n >= 2:
+        ST["hide_req"] = True                       # 反复重置（幂等）：UI 侧 tick 消费藏 #prog
+    if n >= int(_cfg("spin_selfheal_hits", 6)) and _cfg("spin_selfheal", 1) >= 1:
         try:
-            import stop_channel; stop_channel.request("spin-guard 空转自愈")
-        except Exception: pass
-    if n >= 3 and _cfg("spin_selfheal", 1) >= 1:
-        try:
-            import runtime_bind; runtime_bind.lifecycle_request("restart", "spin-selfheal cpu=%.0fms/s silent=%.0fs" % (cpu, sil))
+            import runtime_bind; runtime_bind.lifecycle_request("restart", "spin-selfheal hit=%d cpu=%.0fms/s silent=%.0fs" % (n, cpu, sil))
         except Exception: pass
 def _legit_init():
     """合法长等待判据预计算（arm 时调一次）：LONG_STAGES 集合＋t3 硬上限。
@@ -251,9 +265,20 @@ def _watch(tick_s):
         # 一次性定时器已落栈 → 释放标志，持续可疑时冷却期满可再挂
         if _FH["armed"] and now > _FH["until"]: _FH["armed"] = False
         if _legit_wait():
+            ST["last_legit"] = now   # 记最近一次合法长等待时刻——退出长等待后的处理窗口不判自旋
             # 合法长等待（网关 LLM／SMSocket 密钥轮询）：静默是预期的——
             # 绝不判自旋／藏条／停轮／重启，否则「等密钥」被误判成「卡死」而重启（用户报障）。
             if _FH["armed"]: _cancel_dump("legit-wait")
+            ST["verdict"] = "wait"; ST["hits"] = 0
+            continue
+        # 合法长等待刚结束的宽限期内不判自旋：网关 LLM 请求返回后壳处理响应／构建下轮上下文
+        # 期间既有 CPU 又无逐行输出 beat——旧版 STAGE 已 clear → _legit_wait() 回 False →
+        # 直接判 spin 误杀（用户报障「莫名奇妙 spin-guard 空转自愈导致任务停止」·
+        # spin.log 实证 hit#1 cpu=750 silent=64：网关刚返回、响应处理中、无 STAGE）。
+        # 宽限期＝最近一次合法长等待至今 < spin_legit_grace_s（默认 120s）。
+        in_grace = ST.get("last_legit", 0.0) and (now - float(ST["last_legit"])) < _cfg("spin_legit_grace_s", 120)
+        if in_grace:
+            if _FH["armed"]: _cancel_dump("legit-grace")
             ST["verdict"] = "wait"; ST["hits"] = 0
             continue
         susp = (rate >= thr_c) or (silent >= thr_s)   # 可疑＝高CPU 或 无进展超阈
@@ -287,8 +312,10 @@ def status():
     return {"pid": os.getpid(), "armed": ST["armed"], "verdict": ST["verdict"],
             "cpu_ms_per_s": round(ST["cpu"], 1), "silent_s": round(ST["silent"], 1),
             "hits": ST["hits"], "last_beat": ST["bkind"], "beat_age": round(time.time() - ST["beat"], 1),
+            "last_legit_age": round(time.time() - ST["last_legit"], 1) if ST["last_legit"] else -1,
             "thr": {"cpu_ms_per_s": _cfg("spin_cpu_ms_per_s", 600), "after_s": _cfg("spin_after_s", 60),
-                    "selfheal": _cfg("spin_selfheal", 1)}}
+                    "selfheal": _cfg("spin_selfheal", 1), "selfheal_hits": int(_cfg("spin_selfheal_hits", 6)),
+                    "legit_grace_s": _cfg("spin_legit_grace_s", 120)}}
 def probe(pid):
     c = _cpu_ms(int(pid)); return {"pid": int(pid), "cpu_ms_total": c, "alive": c >= 0}
 def selftest():
@@ -311,7 +338,7 @@ def selftest():
         globals()["_ext_new"] = lambda since: 0.0
         _FH.update({"fh": open(cap, "a", encoding="utf-8"), "path": cap,
                     "armed": False, "until": 0.0, "fired": 0.0})
-        ST.update({"beat": time.time(), "hits": 0, "verdict": "ok", "armed": False})
+        ST.update({"beat": time.time(), "hits": 0, "verdict": "ok", "armed": False, "last_legit": 0.0})
         arm(tick_s=0.3)
         t0 = time.time()
         while time.time() - t0 < 4.0: pass
@@ -354,7 +381,7 @@ def selftest():
         try: _FH["fh"].close()
         except Exception: pass
         _FH.update({"fh": fh0, "path": path0, "armed": False, "until": 0.0, "fired": 0.0})
-        ST.update({"hits": 0, "verdict": "ok", "beat": time.time()})
+        ST.update({"hits": 0, "verdict": "ok", "beat": time.time(), "last_legit": 0.0})
     bad = [r for r in res if not r[1]]
     for n, ok, g in res: print("  %s %s %s" % ("PASS" if ok else "FAIL", n, g))
     print("spin_guard selftest: " + ("OK" if not bad else "FAIL(%d)" % len(bad)))

@@ -76,9 +76,11 @@ def use_sess(sid):
 def list_sess():
     cur = cur_sess(); return "\n".join("%s %s｜%s%s" % (k, v.get("created", ""), v.get("name", ""), "（当前）" if k == cur else "") for k, v in sorted(_smap().items())) or "（暂无会话）"
 def set_active(conv=None, sess=None): ACTIVE.update(({"conv": conv} if conv else {}) | ({"sess": sess} if sess else {}))
-def conversation(text):
-    import prompt_pack; h = __import__("sessions_view").hint(cur_sess())
-    return "[压缩记忆]\n" + prompt_pack.pack(text, 1200, sess=cur_sess()) + "\n\n[" + RULE + "]" + ("\n\n〔会话拓扑〕" + h if h else "") + "\n\n[当前输入·唯一指令]\n" + text
+def conversation(text, raw=None):
+    import prompt_pack
+    q = raw or prompt_pack.simplify(text) or text
+    h = __import__("sessions_view").hint(cur_sess())
+    return "[压缩记忆]\n" + prompt_pack.pack(q, 1200, sess=cur_sess()) + "\n\n[" + RULE + "]" + ("\n\n〔会话拓扑〕" + h if h else "") + "\n\n[当前输入·唯一指令]\n" + text
 def log(kind, name, conv=""):
     sid = conv or ACTIVE["conv"] or session_id()
     return record("skill_call" if kind == "skill" else "tool_call" if kind == "tool" else "subsession", name + "@" + sid, [[sid, "ref", 1], [cur_sess(), "member", 1]])
