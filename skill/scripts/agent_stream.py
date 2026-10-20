@@ -78,11 +78,10 @@ def ask(text, on_line, st=lambda n: None, ev=None):
     spec = adapters()[ag]; ct.flush(); conv = chains.session_id(); chains.set_active(conv); __import__("session_reg").attach(conv, chains.cur_sess()); chains.record("session", "open:" + conv, _edge(conv)); qq_flow._wb([]); st("开新对话：" + conv)
     wsp, virt = ws.begin(conv); st("工作区：" + wsp + ("〔虚拟·收口即删〕" if virt else "")); at.bind(on_line=on_line, ev=ev if ev is not None else False)
     want = _state("current_agent"); want and want != ag and not spec.get("native") and on_line("注意：所选 agent " + want + " 未检出，本次经 " + ag + " 执行（:agents 查看）")
-    sid2, inj = skill_route.route(text, SMS); st("路由参考：" + (sid2 and ("打分命中 " + sid2 + "·已记 skill_call 链（〔参考〕注入模型·非脚本裁决）") or "未命中·注入技能全表"))
     chains.record("dialogue", "user@" + conv + " " + text[:200], _edge(conv)); rc = 0; st("话语送数据流")
     try:
         if spec.get("native"):
-            st("提示词构建·任务总览（脚本粗分种子＋批22 复杂判定交模型）·压缩记忆组装·网关流式执行（路由命中仅作〔参考〕，直答/派工具/建表/建技能由模型自主定）")
+            st("提示词构建·任务总览（脚本粗分种子＋批22 复杂判定交模型）·压缩记忆组装·网关流式执行（直答/派工具/建表/建技能由模型在 Phase1 理解＋Phase2 关键词技能摘要中自主定）")
             # 2026-10-15：st 先于 chains.conversation——旧版把记忆组装放在状态上报之前，
             # 用户侧看到的是「提示词构建」卡住 450ms 才跳到网关流式执行；现在状态先行，
             # 压缩记忆组装（冷启 all_frags ~400ms / warm ~50ms）在用户已看到提示后台进行。
@@ -99,7 +98,6 @@ def ask(text, on_line, st=lambda n: None, ev=None):
             pre_parts = []
             if skill_summaries: pre_parts.append("[技能摘要注入]\n" + skill_summaries)
             if flood_memory and flood_memory != "（暂无压缩记忆）": pre_parts.append("[压缩记忆·泛洪召回]\n" + flood_memory)
-            if inj: pre_parts.append("[SMS 路由·参考]\n" + inj)
             pre = "\n\n".join(pre_parts) if pre_parts else ""
             body2 = sr.prefix() + tt.attach(text) + chains.conversation(text, raw=text, pre=pre)
             if resp1: body2 += "\n\n[第一阶段·任务理解]\n" + str(resp1)[:1500]
@@ -113,10 +111,10 @@ def ask(text, on_line, st=lambda n: None, ev=None):
             env = dict(os.environ, PYTHONIOENCODING="utf-8", SMS_WORKSPACE=wsp,
                        SMS_TMP=resolve_home.wtmp(), SMS_HOME=SMS); env.update(spec.get("env") or {})
             stdin = subprocess.PIPE if spec.get("prompt_stdin") else subprocess.DEVNULL
-            p = no_window.Popen([spec.get("bin", ag)] + args + ([] if stdin else [text if not prefix_on() else text + "\n\n" + inj]), stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", env=env, cwd=wsp)
+            p = no_window.Popen([spec.get("bin", ag)] + args + ([] if stdin else [text if not prefix_on() else text]), stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", env=env, cwd=wsp)
             if spec.get("prompt_stdin"):
                 try:
-                    p.stdin.write(text + "\n\n" + inj); p.stdin.close()
+                    p.stdin.write(text); p.stdin.close()
                 except Exception as e:
                     on_line("!agent▸ 提示词写入异常（继续按已启动的 CLI 收口）：" + str(e)[:120])
             # 2026-10-01 t4（表 001-161413-507）：agent CLI 子进程挂看门狗＋有界读管道。
